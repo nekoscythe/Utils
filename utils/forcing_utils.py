@@ -18,7 +18,6 @@ def convertToSin(data, field, amplitude):
         xarray.Dataset: A copy of the dataset with the specified field modified.
     """
     data_copy = data.copy()
-    one_level = data[field].values[0][:][0]
     Y_field = data[field].dims[1]
     X_field = data[field].dims[2]
     time_field = data[field].dims[0]
@@ -58,7 +57,6 @@ def linear_gradient(data, field, south_value, north_value):
         xarray.Dataset: A copy of the dataset with the specified field modified.
     """
     data_copy = data.copy()
-    one_level = data[field].values[0][:][0]
     Y_field = data[field].dims[1]
     X_field = data[field].dims[2]
     time_field = data[field].dims[0]
