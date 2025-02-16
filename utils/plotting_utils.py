@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from .helper_plotting_utils import get_optimal_subplot_dims, create_subplots, get_colormap_and_limits, make_cbar
+from .helper_plotting_utils import get_optimal_subplot_dims, create_subplots, get_colormap_and_limits, make_cbar, add_colorbar, set_plot_labels
 from .data_manipulation_utils import interpolate_to_rho, slice_data
 from .depth_utils import get_zlevs, get_depth_index
 
@@ -70,8 +70,6 @@ def compare_datasets(datasets, variable, time_idx, eta=None, xi=None, suptitle=N
     plt.tight_layout()
 
     data_var = datasets[-1][variable]
-    plt.subplots_adjust(right=0.85, top= 0.9)  # Make room on the right for the colorbar and top for the suptitle
-    # Create a new axis for the colorbar spanning the entire figure
     cbar_ax = fig.add_axes([0.9, 0.05, 0.03, 0.86])  # [left, bottom, width, height]
     # Add the colorbar to the new axis
     cbar = fig.colorbar(ims[-1], cax=cbar_ax) # use the last im for the colorbar
@@ -119,25 +117,19 @@ def plot_surface(dataset, variable, time_idx, ax=None, title=None, vmin=None, vm
     time_in_months = dataset.time.values[time_idx] / (3600 * 24 * 30)  # Convert seconds to months
     im = ax.pcolormesh(X, Y, data, cmap=cmap, vmin=vmin, vmax=vmax, shading='gouraud')
 
-    ax.set_title(title, wrap=True, fontsize = 8)
-    ax.set_xlabel('Longitude (Km)')
-    ax.set_ylabel('Latitude (Km)')
-    ax.set_aspect('equal')
-
     if title is None:
         title = f"{var_data.attrs['long_name']} at {time_in_months:.1f} months"
-    ax.set_title(title, wrap=True, fontsize = 8)
+    set_plot_labels(ax, var_data, xlabel='Longitude (Km)', title=title)
 
     plt.tight_layout()
 
     if cbar:
-        make_cbar(var_data, ax, im)
-
+        add_colorbar(fig, im, var_data, ax=ax)
 
     return ax, im
 
 
-def plot_surfaces(dataset, variable, time_idx, axs=None, shading="gouraud", vmin=None, vmax=None, suptitle=None):
+def plot_surfaces(dataset, variable, time_idx, axs=None, vmin=None, vmax=None, suptitle=None):
     """
     Plots surface maps of a given variable at multiple time indices.
 
@@ -148,7 +140,6 @@ def plot_surfaces(dataset, variable, time_idx, axs=None, shading="gouraud", vmin
         variable (str): The name of the variable to plot.
         time_idx (int or list of int): Time index or list of time indices to plot.
         axs (list of matplotlib.axes.Axes, optional): List of axes objects to plot on. If None, new axes are created. Defaults to None.
-        shading (str, optional): Shading mode for pcolormesh. Defaults to "gouraud".
         vmin (float, optional): Minimum value for color scaling. Defaults to None (auto-determined).
         vmax (float, optional): Maximum value for color scaling. Defaults to None (auto-determined).
         suptitle (str, optional): Overall suptitle for the figure. Defaults to None (auto-generated).
@@ -191,13 +182,10 @@ def plot_surfaces(dataset, variable, time_idx, axs=None, shading="gouraud", vmin
     s_title = f"{long_name} at the surface" if suptitle is None else suptitle
     plt.suptitle(s_title, fontsize=14, x=0.5, y=1)
     plt.tight_layout()
+    plt.subplots_adjust(top= 0.9) # make room for suptitle
 
-    plt.subplots_adjust(right=0.85, top= 0.9)  # Make room on the right for the colorbar and top for the suptitle
-    # Create a new axis for the colorbar spanning the entire figure
-    cbar_ax = fig.add_axes([0.87, 0.02, 0.03, 0.9])  # [left, bottom, width, height]
-    # Add the colorbar to the new axis
-    cbar = fig.colorbar(im, cax=cbar_ax) # use captured im here
-    cbar.set_label(f"{var_data.attrs['units']}")
+    # Add a single colorbar for the whole figure
+    add_colorbar(fig, im, var_data)
 
     return fig, axs
 
@@ -302,7 +290,7 @@ def plot_depth(dataset, variable, time=0, eta=None, xi=None, max_depth=500, ax=N
 
     # Colorbar
     if cbar:
-        make_cbar(dataset[variable], ax, im)
+        add_colorbar(fig, im, dataset[variable], ax=ax)
 
 
     return im
@@ -351,7 +339,7 @@ def plot_depths(dataset, variable, time, eta=None, xi=None, max_depth=500, title
     plt.tight_layout()
 
     # Add a colorbar to the figure
-    cbar = fig.colorbar(im, ax=axs.ravel().tolist())
+    cbar = add_colorbar(fig, im, dataset[variable]) # use default ax=None to add cbar to figure directly
     cbar.set_label(f"{dataset[variable].attrs['long_name']} ({dataset[variable].attrs['units']})")
 
 
@@ -377,7 +365,7 @@ def plot_surface_vars(dataset, time, title=None):
     fig, ax = create_subplots(len(vars))
 
     for i, var in enumerate(vars):
-        plot_surface(dataset, var, time, ax=ax.flat[i])
+        plot_surface(dataset, var, time, ax=ax[i]) # use ax[i] instead of ax.flat[i] for consistency
         ax[i].label_outer()
 
     plt.suptitle(title, fontsize=15)
@@ -411,7 +399,7 @@ def plot_depth_vars(dataset, time, eta=None, xi=None, max_depth=500, title=None)
     fig, ax = create_subplots(len(vars))
 
     for i, var in enumerate(vars):
-        plot_depth(dataset, var, time, eta=eta, xi=xi, ax=ax.flat[i], max_depth=max_depth)
+        plot_depth(dataset, var, time, eta=eta, xi=xi, ax=ax[i], max_depth=max_depth) # use ax[i] instead of ax.flat[i] for consistency
 
     #manually turn off inner labels
     for i in [1, 2, 3, 5, 6, 7]:
@@ -452,7 +440,7 @@ def plot_surface_biovars(dataset, time, title=None, max_columns=2, figsize=None)
     fig, ax = create_subplots(len(vars), max_columns=max_columns, figsize=figsize)
 
     for i, var in enumerate(vars):
-        plot_surface(dataset, var, time, ax=ax[i])
+        plot_surface(dataset, var, time, ax=ax[i]) # use ax[i] instead of ax.flat[i] for consistency
         ax[i].label_outer()
 
     plt.suptitle(title, fontsize=15)
@@ -487,7 +475,7 @@ def plot_depth_biovars(dataset, time, depth=500, eta=None, xi=None, shading="gou
 
 
     for i, var in enumerate(vars):
-        plot_depth(dataset, var, time, max_depth=depth, ax=ax[i], eta=eta, xi=xi, shading=shading)
+        plot_depth(dataset, var, time, max_depth=depth, ax=ax[i], eta=eta, xi=xi, shading=shading) # use ax[i] instead of ax.flat[i] for consistency
         ax[i].label_outer()
 
     # plt.tight_layout()

@@ -104,18 +104,55 @@ def get_colormap_and_limits(data, vmin=None, vmax=None):
 def make_cbar(var_data, ax, im):
     """
     Adds a colorbar to a plot.
+    """
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.2)
+    cbar = ax.get_figure().colorbar(im, cax=cax)
+    cbar.set_label(f"{var_data.attrs['units']}")
+    return cbar
+
+
+def add_colorbar(fig, im, var_data, ax=None):
+    """
+    Adds a colorbar to a figure.
 
     Parameters:
-        var_data (xarray.DataArray): The data variable being plotted (used for units).
-        ax (matplotlib.axes.Axes): The axes object to which the colorbar should be added.
+        fig (matplotlib.figure.Figure): The figure to add the colorbar to.
         im (matplotlib.collections.QuadMesh): The image object returned by pcolormesh or similar.
+        var_data (xarray.DataArray): The data variable being plotted (used for units).
+        ax (matplotlib.axes.Axes, optional):  Axes object to anchor the colorbar to, if None, it uses the last axes. Defaults to None.
+    """
+    if ax is None:
+        cbar = fig.colorbar(im)
+    else: #if ax is provided, use make_axes_locatable for more controlled placement next to the ax
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.2)
+        cbar = fig.colorbar(im, cax=cax)
+    cbar.set_label(f"{var_data.attrs['units']}")
+    return cbar
+
+
+def set_plot_labels(ax, var_data, xlabel=None, title=None):
+    """
+    Sets common plot labels and titles.
+
+    Parameters:
+        ax (matplotlib.axes.Axes): The axes object to set labels for.
+        var_data (xarray.DataArray): The data variable being plotted (used for long_name and units in title).
+        xlabel (str, optional): Label for the x-axis. Defaults to None.
+        title (str, optional): Title for the plot. Defaults to None (auto-generated from var_data).
 
     Returns:
         matplotlib.colorbar.Colorbar: The colorbar object.
     """
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.2)
-
-    cbar = ax.get_figure().colorbar(im, cax=cax)
-    cbar.set_label(f"{var_data.attrs['units']}")
-    return cbar
+    if title is None:
+        time_in_months = ax.get_title() # try to get time from existing title if available
+        if time_in_months:
+            title = f"{var_data.attrs['long_name']} at {time_in_months}"
+        else:
+            title = f"{var_data.attrs['long_name']}"
+    ax.set_title(title, wrap=True, fontsize = 8)
+    if xlabel:
+        ax.set_xlabel(xlabel)
+    ax.set_ylabel('Latitude (Km)') # y label is consistently Latitude for surface plots
+    ax.set_aspect('equal')
