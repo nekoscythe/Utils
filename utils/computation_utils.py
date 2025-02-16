@@ -1,5 +1,6 @@
 import numpy as np
 from .depth_utils import get_zlevs, get_depth_index # Import at the beginning
+import xarray as xr
 
 def compute_surface_average(ds, var, s_rho=-1):
     """
@@ -47,8 +48,8 @@ def compute_weighted_average(dataset, variable, depth=-1):
     if depth != -1:
         z_levs , _ = get_zlevs(dataset)
         idx = get_depth_index(z_levs, depth)
-        data_vals = dataset[variable][:, idx:].values
-        dV = dataset.dV[:, idx:].values
+        data_vals = dataset[variable][:, :idx+1].values # Corrected slicing
+        dV = dataset.dV[:, :idx+1].values # Corrected slicing
 
     total_volume = np.sum(dV, axis=(1, 2, 3))
     weighted_avg_over_time = np.sum(data_vals * dV, axis=(1, 2, 3)) / total_volume
