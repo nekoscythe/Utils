@@ -1,6 +1,9 @@
 import numpy as np
+import xarray as xr
+import os  # Import the os module for path manipulation
+import xroms # Import xroms library
 from .geo_utils import add_km_grid
-from .general_utils import reset_time
+from .general_utils import reset_time, is_data_positive  # Moved reset_time and added is_data_positive import
 
 def get_savetime_hours(dataset):
     """
@@ -12,77 +15,118 @@ def get_savetime_hours(dataset):
     Returns:
         float: The time step in hours.
     """
+    if len(dataset.time) < 2: # Input validation: check for at least two time points
+        raise ValueError("Dataset must have at least two time points to calculate time step.")
     time = dataset.time
     diff = time[1] - time[0]
     return diff.values / 3600
 
+
 def add_KE(dataset):
     """
-    Compute the kinetic energy (KE) of the flow and add it to the dataset.
+    Compute the kinetic energy (KE) of the flow and return it as a DataArray.
 
     KE is calculated as 0.5 * (u_mid^2 + v_mid^2), where u_mid and v_mid are the
     horizontal velocity components interpolated to the rho points.
+    Does not modify the input dataset.
 
     Parameters:
         dataset (xarray.Dataset): The dataset containing 'u' and 'v' velocity variables.
+
+    Returns:
+        xarray.DataArray: Kinetic energy DataArray.
     """
-    u_mid = 0.5 * (dataset.u[..., :-1].values + dataset.u[..., 1:].values) # interpolate u to rho points
-    v_mid = 0.5 * (dataset.v[...,:-1,:].values + dataset.v[..., 1:,:].values) # interpolate v to rho points
+    if 'u' not in dataset or 'v' not in dataset: # Input validation: check for u and v
+        raise ValueError("Dataset must contain variables 'u' and 'v' to compute KE.")
+
+    u = dataset.u.values
+    v = dataset.v.values
+
+    u_mid = 0.5 * (u[..., :-1] + u[..., 1:])  # Interpolate u to rho points
+    v_mid = 0.5 * (v[..., :-1, :] + v[..., 1:, :])  # Interpolate v to rho points
 
     KE = 0.5 * (u_mid**2 + v_mid**2) #this is just 1/2 * velocity^2
-    #add KE to dataset
-    dataset['KE'] = (('time', 's_rho', 'eta_rho', 'xi_rho'), KE, {'long_name' : 'kinetic energy', 'units': 'meter2 second-2'})
-    dataset['KE'] = dataset.KE.chunk()
+    #create KE DataArray
+    KE_da = xr.DataArray(KE, coords=dataset.u.isel(xi_rho=slice(1,-1), eta_rho=slice(1,-1), time=slice(None)).coords, dims=('time', 's_rho', 'eta_rho', 'xi_rho'), name='KE', attrs={'long_name' : 'kinetic energy', 'units': 'meter2 second-2'})
+    KE_da = KE_da.chunk(dataset.u.chunk()) # rechunk to match original dataset
+
+    return KE_da
+
 
 def add_RV(dataset):
     """
-    Compute the relative vorticity (RV) of the flow and add it to the dataset.
+    Compute the relative vorticity (RV) of the flow and return it as a DataArray.
 
     RV is calculated as dv/dx - du/dy, where u and v are horizontal velocity components
     and derivatives are approximated using finite differences on the grid.
+    Does not modify the input dataset.
+
+    Assumes a regular grid for finite difference calculation.
 
     Parameters:
         dataset (xarray.Dataset): The dataset containing 'u', 'v', 'pm', and 'pn' variables.
+
+    Returns:
+        xarray.DataArray: Relative vorticity DataArray.
     """
+    required_vars = ['u', 'v', 'pm', 'pn'] # Input validation: check for required variables
+    for var in required_vars:
+        if var not in dataset:
+            raise ValueError(f"Dataset must contain variable '{var}' to compute RV.")
+
     pm = dataset.pm.values #1/dx
     pn = dataset.pn.values #1/dy
-
 
     pm_psi = 0.25 * (pm[:-1, :-1] + pm[1:, :-1] + pm[:-1, 1:] + pm[1:, 1:]) # interpolate pm to psi points
     pn_psi = 0.25 * (pn[:-1, :-1] + pn[1:, :-1] + pn[:-1, 1:] + pn[1:, 1:]) # interpolate pn to psi points
 
-    dv = dataset.v[:,:,:, 1:].values - dataset.v[:,:,:, :-1].values
-    du = dataset.u[:,:, 1:, :].values - dataset.u[:,:, :-1, :].values
+    dv = dataset.v[:,:,:, 1:] - dataset.v[:,:,:, :-1]
+    du = dataset.u[:,:, 1:, :] - dataset.u[:,:, :-1, :]
+
 
     zeta_vort = (dv * pm_psi) - (du * pn_psi) # dv/dx - du/dy
 
-    #add RV to dataset
-    dataset['RV'] = (('time', 's_rho', 'eta_v', 'xi_u'), zeta_vort, {'long_name' : 'relative vorticity', 'units': 'second-1'})
-    #make chunk size the same as the original dataset
-    #1 chunks in 3 graph layers
-    dataset['RV'] = dataset.RV.chunk()
+    #create RV DataArray
+    RV_da = xr.DataArray(zeta_vort, coords=dataset.v.isel(xi_rho=slice(1,-1), eta_v=slice(1,-1), time=slice(None)).coords, dims=('time', 's_rho', 'eta_v', 'xi_u'), name='RV', attrs={'long_name' : 'relative vorticity', 'units': 'second-1'})
+    RV_da = RV_da.chunk(dataset.v.chunk()) # rechunk to match original dataset
+    return RV_da
+
 
 def add_dV(dataset):
     """
-    Compute the volume (dV) of each cell in the grid and add it to the dataset.
+    Compute the volume (dV) of each cell in the grid and return it as a DataArray.
 
     dV is calculated as dA * dz, where dA is the surface area of the cell and dz is the
     vertical thickness.
+    Does not modify the input dataset.
+    Assumes z_w is structured for np.diff(z_w, axis=1) to calculate dz.
 
     Parameters:
         dataset (xarray.Dataset): The dataset containing 'dA' and 'z_w' variables.
+
+    Returns:
+        xarray.DataArray: Volume DataArray.
     """
+    required_vars = ['dA', 'z_w'] # Input validation: check for required variables
+    for var in required_vars:
+        if var not in dataset:
+            raise ValueError(f"Dataset must contain variable '{var}' to compute dV.")
+
     dz = np.diff(dataset.z_w, axis=1)
 
     # dA = dx_expanded * dy_expanded  # surface area of each cell
     dV = dataset.dA.values * dz  # volume of each cell
 
-    dataset['dV'] = (('time', 's_rho', 'eta', 'xi'), dV, {'long_name' : 'volume of cells on RHO grid' , 'units': 'meter3'})
+    dV_da = xr.DataArray(dV, coords=dataset.dA.coords, dims=('time', 's_rho', 'eta', 'xi'), name='dV', attrs={'long_name' : 'volume of cells on RHO grid' , 'units': 'meter3'})
+    dV_da = dV_da.chunk(dataset.dA.chunk()) # rechunk to match original dataset
+    return dV_da
 
 
-def preprocess(dataset, bio=False):
+def preprocess(dataset, bio=False, output_path=None):
     """
     Applies a series of preprocessing steps to the input dataset.
+    Does not modify the input dataset in-place.
+    Optionally saves the *additional* preprocessed variables to a new NetCDF file.
 
     The preprocessing steps include:
         - Adding Relative Vorticity (RV)
@@ -96,26 +140,67 @@ def preprocess(dataset, bio=False):
     Parameters:
         dataset (xarray.Dataset): The input dataset.
         bio (bool, optional): If True, apply non-negativity to biological variables. Defaults to False.
+        output_path (str, optional): Path to save the *additional* preprocessed variables to a new NetCDF file.
+                                     If None, the preprocessed variables are not saved to a file. Defaults to None.
+
+    Returns:
+        xarray.Dataset: The preprocessed dataset (including original and preprocessed variables).
+                        The original dataset is not modified.
+    """
+    processed_dataset = dataset.copy() # work on a copy to avoid in-place modification
+    rv_da = add_RV(processed_dataset) # calculate derived variables as DataArrays
+    processed_dataset = remove_ghost_points(processed_dataset) # remove ghost points from the copy
+    ke_da = add_KE(processed_dataset)
+    dv_da = add_dV(processed_dataset)
+
+    processed_dataset = processed_dataset.assign({'RV': rv_da, 'KE': ke_da, 'dV': dv_da}) # assign derived variables to processed_dataset
+    processed_dataset = add_km_grid(processed_dataset) # add km_grid to processed_dataset
+
+    if bio:
+        processed_dataset = non_negative_bio(processed_dataset)
+    processed_dataset = reset_time(processed_dataset) # Use imported reset_time from general_utils
+
+    if output_path: # Save *additional* variables to NetCDF if output_path is provided
+        additional_vars_ds = processed_dataset[['RV', 'KE', 'dV', 'lon_km', 'lat_km']] # create dataset with only additional vars
+        additional_vars_ds.to_netcdf(output_path)
+        print(f"Additional preprocessed variables saved to: {output_path}")
+
+    return processed_dataset
+
+
+def load_and_preprocess(file_path, bio=False):
+    """
+    Loads a NetCDF dataset and applies preprocessing.
+    Checks for a preprocessed file and loads from it if available to avoid redundant computations.
+
+    Parameters:
+        file_path (str): Path to the original NetCDF dataset file.
+        bio (bool, optional): If True, apply non-negativity to biological variables during preprocessing. Defaults to False.
 
     Returns:
         xarray.Dataset: The preprocessed dataset.
     """
-    add_RV(dataset) # we need to compute this before removing ghost points as we need the psi points
-    dataset = remove_ghost_points(dataset)
-    add_KE(dataset)
-    add_dV(dataset)
-    add_km_grid(dataset)
-    if bio:
-        non_negative_bio(dataset)
-    dataset = reset_time(dataset)
-    return dataset
+    preprocessed_file_path = file_path.replace(".nc", "_preprocessed.nc") # Define path for preprocessed file
+
+    if os.path.exists(preprocessed_file_path): # Check if preprocessed file exists
+        print(f"Loading preprocessed variables from: {preprocessed_file_path}")
+        original_dataset = xr.open_dataset(file_path) # load original dataset
+        additional_vars_ds = xr.open_dataset(preprocessed_file_path) # Load preprocessed variables
+        preprocessed_dataset = xr.merge([original_dataset, additional_vars_ds], combine_attrs="override") # merge original and preprocessed
+    else: # Preprocessed file does not exist, perform preprocessing and save
+        print(f"Preprocessing dataset from: {file_path}")
+        dataset = xr.open_dataset(file_path) # Load original dataset
+        preprocessed_dataset = preprocess(dataset, bio=bio, output_path=preprocessed_file_path) # Preprocess and save additional vars
+
+    return preprocessed_dataset
+
 
 def remove_ghost_points(dataset):
     """
     Removes ghost points from the eta_rho and xi_rho dimensions of the dataset.
+    Does not modify the input dataset in-place, returns a new dataset.
 
-    Ghost points are boundary points often added in numerical simulations for boundary conditions.
-    This function removes the first and last index along the eta_rho and xi_rho dimensions.
+    Assumes ghost points are the first and last indices of 'eta_rho' and 'xi_rho' dimensions.
 
     Parameters:
         dataset (xarray.Dataset): The dataset to remove ghost points from.
@@ -123,18 +208,30 @@ def remove_ghost_points(dataset):
     Returns:
         xarray.Dataset: The dataset with ghost points removed.
     """
+    dims_to_check = ['eta_rho', 'xi_rho'] # Input validation: check for required dimensions
+    for dim in dims_to_check:
+        if dim not in dataset.dims:
+            raise ValueError(f"Dataset must have dimension '{dim}' to remove ghost points.")
     return dataset.isel(eta_rho=slice(1,-1), xi_rho=slice(1,-1))
 
-def non_negative_bio(ds):
-    """
-    Clips biological variables (CHLA, NO3, PHYTO) to ensure non-negative values.
 
-    This function modifies the dataset in-place, setting any negative values in 'CHLA', 'NO3',
-    and 'PHYTO' variables to zero.
+def non_negative_bio(dataset, bio_vars = ['CHLA', 'NO3', 'PHYTO']):
+    """
+    Clips biological variables to ensure non-negative values.
+    Does not modify the input dataset in-place, returns a new dataset.
 
     Parameters:
-        ds (xarray.Dataset): The dataset to modify.
+        dataset (xarray.Dataset): The dataset to modify.
+        bio_vars (list, optional): List of biological variables to clip.
+                                     Defaults to ['CHLA', 'NO3', 'PHYTO'].
+
+    Returns:
+        xarray.Dataset: The dataset with non-negative biological variables.
     """
-    ds['CHLA'] = ds.CHLA.clip(min=0)
-    ds['NO3'] = ds.NO3.clip(min=0)
-    ds['PHYTO'] = ds.PHYTO.clip(min=0)
+    dataset_copy = dataset.copy() # avoid in-place modification
+    for var in bio_vars: # Flexibility: loop over bio_vars list
+        if var in dataset_copy: # Robustness: check if var exists before clipping
+            dataset_copy[var] = dataset_copy[var].clip(min=0)
+        else:
+            print(f"Warning: Biological variable '{var}' not found in dataset, skipping non-negativity clipping for this variable.")
+    return dataset_copy

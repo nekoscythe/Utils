@@ -1,3 +1,5 @@
 Utils.py
 *.pyc
 .aider*
+*.ipynb
+*.nc

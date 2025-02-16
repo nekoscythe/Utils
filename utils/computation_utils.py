@@ -1,4 +1,5 @@
 import numpy as np
+from .depth_utils import get_zlevs, get_depth_index # Import at the beginning
 
 def compute_surface_average(ds, var, s_rho=-1):
     """
@@ -93,5 +94,3 @@ def compute_average_KE(dataset):
     average_KE_over_time = np.sum(dataset.KE.values * dataset.dV.values, axis=(1, 2, 3)) / total_volume
 
     return average_KE_over_time
-
-from .depth_utils import get_zlevs, get_depth_index # Import here to avoid circular dependency
