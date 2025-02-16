@@ -1,487 +1,449 @@
-import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from .helper_plotting_utils import get_optimal_subplot_dims, create_subplots, get_colormap_and_limits, make_cbar, add_colorbar, set_plot_labels
-from .data_manipulation_utils import interpolate_to_rho, slice_data
+import numpy as np
+import xarray as xr
+from .colormap_utils import get_colormap_and_limits
 from .depth_utils import get_zlevs, get_depth_index
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
-def compare_datasets(datasets, variable, time_idx, eta=None, xi=None, suptitle=None, z_levs=None, titles=None, max_depth=500, gen_levels=False, vmin=None, vmax=None, s_rho=-1, max_columns=None):
+def plot_surface(dataset, variable, time_idx, ax=None, title=None, cmap=None, vmin=None, vmax=None, cbar=True, time_unit='months', auto_minmax=False):
     """
-    Compares and plots a variable from multiple datasets side-by-side.
-
-    This function generates a grid of subplots, with each column representing a dataset and each row
-    (optionally, if time_idx is a list) representing a time index. It can plot either surface maps
-    or depth profiles depending on whether 'eta' or 'xi' is specified.
+    Plots a surface map of a given variable from an xarray Dataset.
 
     Parameters:
-        datasets (list of xarray.Dataset): A list of datasets to compare.
-        variable (str): The name of the variable to plot.
-        time_idx (int or list of int): Time index or list of time indices to plot.
-        eta (int, optional): Index along latitudinal dimension (for zonal depth profile). Defaults to None (surface plot).
-        xi (int, optional): Index along longitudinal dimension (for meridional depth profile). Defaults to None (surface plot).
-        suptitle (str, optional): Overall suptitle for the figure. Defaults to None.
-        z_levs (np.ndarray, optional): Depth levels array (if available). Defaults to None.
-        titles (list of str, optional): Titles for each column (dataset). Defaults to None.
-        max_depth (float, optional): Maximum depth to plot for depth profiles. Defaults to 500m.
-        gen_levels (bool, optional): Whether to automatically generate contour levels for depth plots. Defaults to False.
-        vmin (float, optional): Minimum value for color scaling. Defaults to None (auto-determined).
-        vmax (float, optional): Maximum value for color scaling. Defaults to None (auto-determined).
-        s_rho (int, optional): s_rho level for surface plots. Defaults to -1 (surface).
-        max_columns (int, optional): Maximum number of columns in the subplot grid. Defaults to None (auto-determined).
-
-    Returns:
-        list of matplotlib.axes.Axes: A list of axes objects for the generated subplots.
-    """
-
-    #if time_idx is an integer, convert to list
-    if isinstance(time_idx, int):
-        time_idx = [time_idx]
-
-    n_datasets = len(datasets)
-    n_times = len(time_idx)
-
-    fig, ax = create_subplots(n_datasets * n_times , max_columns=n_datasets if max_columns is None else max_columns)
-    # plt.subplots_adjust(right=0.8)  # Make room on the right for the colorbar
-
-    s_rho = None if eta is not None or xi is not None else s_rho
-    if vmin is None or vmax is None:
-        minmax = get_minmax_datasets(datasets, variable, time=time_idx, eta=eta, xi=xi, s_rho=s_rho, max_depth=max_depth, z_levs=z_levs)
-    minmax = [vmin if vmin is not None else minmax[0], vmax if vmax is not None else minmax[1]]
-
-    ims = [] # list to store im objects
-    for j, time in enumerate(time_idx):
-        for i, dataset in enumerate(datasets):
-            idx = j * n_datasets + i
-            if eta is not None or xi is not None: #plot depth
-                im = plot_depth(dataset, variable, time, ax=ax[idx], eta=eta, xi=xi, z_levs=z_levs, vmin=minmax[0], vmax=minmax[1], max_depth=max_depth, cbar=False, gen_levels=gen_levels)
-            else: #plot surface
-                _ , im = plot_surface(dataset, variable, time, ax=ax[idx], vmin=minmax[0], vmax=minmax[1], cbar=False, s_rho=s_rho)
-            ims.append(im) # append im to list
-            ax[idx].set_aspect('auto')
-            ax[idx].label_outer()
-
-    #add a space between suptitle and the plots
-        #use titles on the top row only
-    if titles is not None:
-        for i, title in enumerate(titles):
-            ax[i].set_title(title, fontsize=8)
-    plt.suptitle(suptitle, fontsize=16)
-    plt.tight_layout()
-
-    data_var = datasets[-1][variable]
-    cbar_ax = fig.add_axes([0.9, 0.05, 0.03, 0.86])  # [left, bottom, width, height]
-    # Add the colorbar to the new axis
-    cbar = fig.colorbar(ims[-1], cax=cbar_ax) # use the last im for the colorbar
-    cbar.set_label(f"{data_var.attrs['units']}")
-
-    return ax
-
-
-def plot_surface(dataset, variable, time_idx, ax=None, title=None, vmin=None, vmax=None, cbar=True, s_rho=-1):
-    """
-    Plots a surface map of a given variable at a specific time index.
-
-    Parameters:
-        dataset (xarray.Dataset): The dataset to plot from.
+        dataset (xarray.Dataset): The dataset containing the variable to plot.
         variable (str): The name of the variable to plot.
         time_idx (int): The time index to plot.
-        ax (matplotlib.axes.Axes, optional): The axes object to plot on. If None, a new figure and axes are created. Defaults to None.
+        ax (matplotlib.axes.Axes, optional): The axes object to plot on. Defaults to None (creates a new figure and axes).
         title (str, optional): The title of the plot. Defaults to None (auto-generated).
+        cmap (str, optional): Colormap to use. Defaults to None (auto-determined).
         vmin (float, optional): Minimum value for color scaling. Defaults to None (auto-determined).
         vmax (float, optional): Maximum value for color scaling. Defaults to None (auto-determined).
-        cbar (bool, optional): Whether to display a colorbar. Defaults to True.
-        s_rho (int, optional): s_rho level to plot (for 3D variables). Defaults to -1 (surface).
-
+        cbar (bool, optional): Whether to add a colorbar. Defaults to True.
+        time_unit (str, optional): Unit for time display in the title ('hours', 'days', 'weeks', 'months', 'years'). Defaults to 'months'.
+        auto_minmax (bool, optional): Whether to automatically determine vmin and vmax across datasets. Defaults to False.
     Returns:
-        tuple: A tuple containing:
-            - ax (matplotlib.axes.Axes): The axes object on which the plot was created.
-            - im (matplotlib.collections.QuadMesh): The image object created by pcolormesh.
+        tuple: A tuple containing the axes object and the image object.
     """
-
     if ax is None:
-        fig, ax = plt.subplots(1,1)
+        fig, ax = plt.subplots(figsize=(8, 6))
     else:
-        fig = ax.get_figure()
+        fig = ax.figure
 
+    data = dataset[variable][time_idx, 0].values
+    cmap, vmin, vmax = get_colormap_and_limits(data, vmin=vmin, vmax=vmax)
+    if vmin is None or vmax is None:
+        cmap, vmin, vmax = get_colormap_and_limits(data, vmin=vmin, vmax=vmax)
+    if auto_minmax:
+        from .data_min_max_utils import get_minmax_datasets # Import here to avoid circular dependency
+        global_min_max = get_minmax_datasets([dataset], variable) # Pass dataset as a list
+        vmin, vmax = global_min_max[0], global_min_max[1] # unpack min and max values
 
-    var_data = dataset[variable][time_idx, s_rho] if len(dataset[variable].shape) == 4 else dataset[variable][time_idx] # 4D vs 3D data
-    data = interpolate_to_rho(var_data)   #Interpolate data to rho grid
-
-    # Determine color scaling
-    cmap, vmin, vmax = get_colormap_and_limits(data, vmin, vmax)
-    if "lon_km" in dataset and "lat_km" in dataset:
-        X, Y = dataset.lon_km.values, dataset.lat_km.values
-    else:
-        X, Y = dataset.lon_rho.values, dataset.lat_rho.values
+    X, Y = dataset.lon_km.values, dataset.lat_km.values
     time_in_months = dataset.time.values[time_idx] / (3600 * 24 * 30)  # Convert seconds to months
     im = ax.pcolormesh(X, Y, data, cmap=cmap, vmin=vmin, vmax=vmax, shading='gouraud')
 
     if title is None:
-        title = f"{var_data.attrs['long_name']} at {time_in_months:.1f} months"
-    set_plot_labels(ax, var_data, xlabel='Longitude (Km)', title=title)
-
-    plt.tight_layout()
+        title = f"{variable} at surface, Time: {time_in_months:.1f} {time_unit}"
+    ax.set_title(title)
+    ax.set_xlabel("Longitude (km)")
+    ax.set_ylabel("Latitude (km)")
+    ax.set_aspect('equal', adjustable='box')
 
     if cbar:
-        add_colorbar(fig, im, var_data, ax=ax)
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.1)
+        fig.colorbar(im, cax=cax, label=variable)
 
     return ax, im
 
 
-def plot_surfaces(dataset, variable, time_idx, axs=None, vmin=None, vmax=None, suptitle=None):
+def plot_surfaces(dataset, variable, time_idx=slice(0, 5), titles=None, cmap=None, vmin=None, vmax=None, suptitle=None, time_unit='months', auto_minmax=False):
     """
-    Plots surface maps of a given variable at multiple time indices.
-
-    Generates a grid of subplots, each showing the surface map at a different time index.
+    Plots a series of surface maps for a given variable over multiple time indices.
 
     Parameters:
-        dataset (xarray.Dataset): The dataset to plot from.
+        dataset (xarray.Dataset): The dataset containing the variable to plot.
         variable (str): The name of the variable to plot.
-        time_idx (int or list of int): Time index or list of time indices to plot.
-        axs (list of matplotlib.axes.Axes, optional): List of axes objects to plot on. If None, new axes are created. Defaults to None.
+        time_idx (slice, list): Time indices to plot. Defaults to slice(0, 5) (first 5 time steps).
+        titles (list of str, optional): Titles for each subplot. Defaults to None (auto-generated titles).
+        cmap (str, optional): Colormap to use. Defaults to None (auto-determined).
         vmin (float, optional): Minimum value for color scaling. Defaults to None (auto-determined).
         vmax (float, optional): Maximum value for color scaling. Defaults to None (auto-determined).
         suptitle (str, optional): Overall suptitle for the figure. Defaults to None (auto-generated).
-
+        time_unit (str, optional): Unit for time display in the title ('hours', 'days', 'weeks', 'months', 'years'). Defaults to 'months'.
+        auto_minmax (bool, optional): Whether to automatically determine vmin and vmax across datasets. Defaults to False.
     Returns:
-        tuple: A tuple containing:
-            - fig (matplotlib.figure.Figure): The figure object.
-            - axs (list of matplotlib.axes.Axes): A list of axes objects for the generated subplots.
+        tuple: A tuple containing the figure object and the axes objects.
     """
+    if isinstance(time_idx, int):  # Handle single time index input
+        time_idx = [time_idx]
+    num_plots = len(time_idx)
+    fig, axs = create_subplots(num_plots)
 
-    # Ensure time_idx is a list
-    time_idx = [time_idx] if isinstance(time_idx, int) else time_idx
 
+    if vmin is None or vmax is None:
+        all_data = np.concatenate([dataset[variable][t_idx].values.flatten() for t_idx in time_idx])
+        cmap, vmin, vmax = get_colormap_and_limits(all_data, vmin=vmin, vmax=vmax)
+    if auto_minmax:
+        from .data_min_max_utils import get_minmax_datasets # Import here to avoid circular dependency
+        global_min_max = get_minmax_datasets([dataset], variable, time=time_idx) # Pass dataset as list and time slice
+        vmin, vmax = global_min_max[0], global_min_max[1] # unpack min and max values
 
-    # Extract data for each time index
-    var_data = dataset[variable]
-    data = var_data[time_idx, -1].values
+    ims = []
+    i = 0
+    for t_idx in time_idx:
+        time_in_months = dataset.time.values[t_idx] / (3600 * 24 * 30)
+        if titles is None:
+            title = f"Time: {time_in_months:.1f} months"
+        ax, im = plot_surface(dataset, variable, t_idx, ax=axs[i], title=title, vmin=vmin, vmax=vmax, cbar=False, time_unit=time_unit, auto_minmax=False) # auto_minmax is already handled at surfaces level
+        ims.append(im)
+        i += 1
 
-    cmap, vmin, vmax = get_colormap_and_limits(data, vmin, vmax)
-
-    X, Y = dataset.lon_km.values, dataset.lat_km.values
-
-    times_in_months = dataset.time.values[time_idx] / (3600 * 24 * 30)  # Convert seconds to months
-
-    # Set up figure and axes
-    if axs is None:
-        fig, axs = create_subplots(len(time_idx))
-    else:
-        axs = axs.flatten()
-
-    im = None # Initialize im here
-    # Plot each time index
-    for i in range(len(time_idx)):
-        _, im = plot_surface(dataset, variable, time_idx[i], ax=axs[i], vmin=vmin, vmax=vmax, cbar=False) # capture im here
-        axs[i].label_outer()
-
-    long_name = var_data.attrs.get('long_name', '')
-
-    # Add title
-    s_title = f"{long_name} at the surface" if suptitle is None else suptitle
-    plt.suptitle(s_title, fontsize=14, x=0.5, y=1)
-    plt.tight_layout()
-    plt.subplots_adjust(top= 0.9) # make room for suptitle
-
-    # Add a single colorbar for the whole figure
-    add_colorbar(fig, im, var_data)
-
+    if suptitle is None:
+        suptitle = f"Surface plots of {variable}"
+    fig.suptitle(suptitle)
+    add_colorbar_to_subplots(fig, axs, ims, variable)  # Pass ims to use the last image for colorbar levels
     return fig, axs
 
 
-def plot_depth_simple(data, z_levels, max_depth=500):
+def plot_depth(dataset, variable, time, eta, xi, max_depth=500, ax=None, title=None, cmap=None, vmin=None, vmax=None, cbar=True, shading='gouraud', auto_minmax=False):
     """
-    Plots a simple depth profile (X-Z plot) of the given data.
-
-    This function is a basic depth plotting utility that assumes the input 'data' is already
-    a 2D array representing data at different depths, and 'z_levels' are the corresponding depth values.
+    Plots a depth profile map of a given variable from an xarray Dataset at a specific time and location (eta, xi).
 
     Parameters:
-        data (np.ndarray): 2D numpy array of data at different depths (depth dimension should be the first dimension).
-        z_levels (np.ndarray): 1D array of depth levels corresponding to the rows of 'data' (negative values, increasing downwards).
-        max_depth (float, optional): Maximum depth to plot. Defaults to 500m.
-
-    Returns:
-        tuple: A tuple containing:
-            - fig (matplotlib.figure.Figure): The figure object.
-            - ax (matplotlib.axes.Axes): The axes object on which the plot was created.
-    """
-    fig, ax = plt.subplots()
-    im = ax.pcolormesh(data, cmap="viridis")
-    # ax.set_aspect("auto")
-    ax.set_xlabel("X")
-    ax.set_ylabel("Depth")
-    ax.set_ylim([0, max_depth])
-    ax.set_yticks(range(0, max_depth + 1, 50))
-    ax.set_yticklabels([f"{z:.0f}" for z in np.interp(ax.get_yticks(), range(0, max_depth + 1, 50), z_levels)])
-    cbar = fig.colorbar(im, ax=ax)
-    cbar.set_label("Data")
-    return fig, ax
-
-
-def plot_depth(dataset, variable, time=0, eta=None, xi=None, max_depth=500, ax=None, title=None, vmin=None, vmax=None, z_levs=None, levels=None, gen_levels=False, cbar=True, shading="gouraud"):
-    """
-    Plots a depth profile (X-Z or Y-Z plot) of a given variable from the dataset.
-
-    This function extracts a depth slice using 'slice_data' and plots it as a pcolormesh.
-    It can create either a zonal (longitude-depth) or meridional (latitude-depth) profile
-    depending on whether 'eta' or 'xi' is specified.
-
-    Parameters:
-        dataset (xarray.Dataset): The dataset to plot from.
+        dataset (xarray.Dataset): The dataset containing the variable to plot.
         variable (str): The name of the variable to plot.
-        time (int, optional): The time index to plot. Defaults to 0.
-        eta (int, optional): Index along latitudinal dimension (for zonal depth profile). Defaults to None (meridional profile).
-        xi (int, optional): Index along longitudinal dimension (for meridional depth profile). Defaults to None (zonal profile).
-        max_depth (float, optional): Maximum depth to plot. Defaults to 500m.
-        ax (matplotlib.axes.Axes, optional): The axes object to plot on. If None, a new figure and axes are created. Defaults to None.
+        time (int): The time index to plot.
+        eta (int): The eta index (latitude-like) to plot.
+        xi (int): The xi index (longitude-like) to plot.
+        max_depth (int, optional): Maximum depth to consider for plotting. Defaults to 500m.
+        ax (matplotlib.axes.Axes, optional): The axes object to plot on. Defaults to None (creates a new figure and axes).
         title (str, optional): The title of the plot. Defaults to None (auto-generated).
+        cmap (str, optional): Colormap to use. Defaults to None (auto-determined).
         vmin (float, optional): Minimum value for color scaling. Defaults to None (auto-determined).
         vmax (float, optional): Maximum value for color scaling. Defaults to None (auto-determined).
-        z_levs (np.ndarray, optional): Depth levels array (if available). Defaults to None (auto-determined).
-        levels (list of float, optional): Contour levels to overlay. Defaults to None (no contours).
-        gen_levels (bool, optional): Whether to automatically generate contour levels. Defaults to False.
-        cbar (bool, optional): Whether to display a colorbar. Defaults to True.
-        shading (str, optional): Shading mode for pcolormesh. Defaults to "gouraud".
+        cbar (bool, optional): Whether to add a colorbar. Defaults to True.
+        auto_minmax (bool, optional): Whether to automatically determine vmin and vmax across datasets. Defaults to False.
 
     Returns:
-        matplotlib.collections.QuadMesh: The image object created by pcolormesh.
+        matplotlib.image.QuadMesh: The image object.
     """
-    # Create figure and axis if not passed
-    fig, ax = plt.subplots() if ax is None else (ax.get_figure(), ax)
-
-
-    # Data preparation
-    data, X, xlabel = slice_data(dataset, variable, time, eta, xi) # Extract data slice
-    Y, z_var = get_zlevs(dataset) if z_levs is None else (z_levs, None) # Get z-levels
-    if z_var != "s_rho" and z_var != "s_w":
-        z_idx = get_depth_index(Y, max_depth)
-        data = data[z_idx:]
-        Y = Y[z_idx:]
-
-    # Set colormap and limits
-    if vmin is None and vmax is None:
-        cmap, vmin, vmax = get_colormap_and_limits(data, vmin, vmax)
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 6))
     else:
-        cmap = "turbo" if (vmin >= 0) else "seismic"
+        fig = ax.figure
 
-    # Plot the data
-    im = ax.pcolormesh(X, Y, data, cmap=cmap, vmin=vmin, vmax=vmax, shading=shading)
+    z_rho = dataset.z_rho[time, :, eta, xi].values
+    z_w = dataset.z_w[time, :, eta, xi].values
+    variable_data = dataset[variable][time, :, eta, xi].values
 
-    # Contour levels setup
-    contour_levels = np.round(np.linspace(data.min(), data.max(), 10), decimals=1) if gen_levels else (levels if levels is not None else [])
-    #remove duplicate levels
-    contour_levels = list(dict.fromkeys(contour_levels))
-    cs = ax.contour(X, Y, data, levels=contour_levels, colors="black", linestyles="solid")
-    ax.clabel(cs, inline=True, fontsize=8)
+    z_idx = get_depth_index(z_rho, max_depth)
 
-    # Labeling
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel("Depth (m)")
-    if z_var != "s_rho" and z_var != "s_w":
-        ax.set_ylim([-max_depth, 0])
+    Z = -z_rho[z_idx:]
+    data = variable_data[z_idx:]
 
-    # Title with time in months
+    cmap, vmin, vmax = get_colormap_and_limits(data, vmin=vmin, vmax=vmax)
+    cmap = cmap if cmap is not None else 'viridis'
+    if auto_minmax:
+        from .data_min_max_utils import get_minmax_datasets # Import here to avoid circular dependency
+        global_min_max = get_minmax_datasets([dataset], variable, time=time, max_depth=max_depth) # Pass dataset as list and time and depth
+        vmin, vmax = global_min_max[0], global_min_max[1] # unpack min and max values
+
+    im = ax.pcolormesh(dataset.ocean_time.values[[time]], Z, data, cmap=cmap, vmin=vmin, vmax=vmax, shading=shading)
+
+    # Labels and formatting
     time_in_months = dataset.time.values[time] / (3600 * 24 * 30)
-    ax.set_title(title or f"{dataset[variable].attrs['long_name']} at {time_in_months:.1f} months", fontsize=8)
+    if title is None:
+        title = f"{variable} depth profile, Time: {time_in_months:.1f} months, Location: eta={eta}, xi={xi}"
+    ax.set_title(title)
+    ax.set_ylabel("Depth (m)")
+    ax.set_xticks([])  # remove xticks for time axis
+    ax.invert_yaxis()  # Invert y-axis to have depth increasing downwards
 
-    plt.tight_layout()
-
-    # Colorbar
     if cbar:
-        add_colorbar(fig, im, dataset[variable], ax=ax)
-
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.1)
+        fig.colorbar(im, cax=cax, label=variable)
 
     return im
 
 
-def plot_depths(dataset, variable, time, eta=None, xi=None, max_depth=500, title=None, levels=None, override_title=False, gen_levels=False):
+def plot_depths(dataset, variable, time_indices=slice(0, 5), eta=50, xi=50, max_depth=500, titles=None, cmap=None, vmin=None, vmax=None, suptitle=None, cbar=True, auto_minmax=False):
     """
-    Plots depth profiles of a given variable at multiple time indices.
-
-    Generates a grid of subplots, each showing the depth profile at a different time index.
+    Plots a series of depth profile maps for a given variable over multiple time indices at a fixed location (eta, xi).
 
     Parameters:
-        dataset (xarray.Dataset): The dataset to plot from.
+        dataset (xarray.Dataset): The dataset containing the variable to plot.
         variable (str): The name of the variable to plot.
-        time (int or list of int): Time index or list of time indices to plot.
-        eta (int, optional): Index along latitudinal dimension (for zonal depth profile). Defaults to None (meridional profile).
-        xi (int, optional): Index along longitudinal dimension (for meridional depth profile). Defaults to None (zonal profile).
-        max_depth (float, optional): Maximum depth to plot. Defaults to 500m.
-        title (str, optional): Overall title for the set of plots. Defaults to None (auto-generated).
-        levels (list of float, optional): Contour levels to overlay on all depth plots. Defaults to None (no contours).
-        override_title (bool, optional): If True, use the provided 'title' directly as the figure suptitle. Defaults to False (appends variable name).
-        gen_levels (bool, optional): Whether to automatically generate contour levels for all depth plots. Defaults to False.
-    """
-    # Ensure time is a list
-    time = [time] if not isinstance(time, list) else time
-
-    # Create the figure and axes for multiple subplots
-    fig, axs = create_subplots(len(time))
-
-    # Determine global vmin and vmax
-    vmin = dataset[variable][time].min().values
-    vmax = dataset[variable][time].max().values
-
-    # Plot each time index using plot_depth
-    for i, idx in enumerate(time):
-        im = plot_depth(dataset, variable, idx, eta, xi, max_depth, axs[i], title=f"{dataset.time.values[idx]/(3600*24*30):.1f} months", cbar=False, levels=levels, vmin=vmin, vmax=vmax, gen_levels=gen_levels)
-
-        # Set axis to outer labels only
-        axs[i].label_outer()
-
-    # Title handling for the figure
-    title = title if override_title else (f"{dataset[variable].attrs['long_name']}" if title is None else f"{title} ({dataset[variable].attrs['long_name']})")
-    fig.suptitle(title, fontsize=16)
-
-    # Apply tight layout for better spacing
-    plt.tight_layout()
-
-    # Add a colorbar to the figure
-    cbar = add_colorbar(fig, im, dataset[variable]) # use default ax=None to add cbar to figure directly
-    cbar.set_label(f"{dataset[variable].attrs['long_name']} ({dataset[variable].attrs['units']})")
-
-
-def plot_surface_vars(dataset, time, title=None):
-    """
-    Plots surface maps for a set of standard physical variables.
-
-    Variables plotted are: 'u', 'v', 'w', 'temp', 'salt', 'rho', 'KE', 'RV', 'zeta'.
-    Generates a grid of subplots for these variables at a given time index.
-
-    Parameters:
-        dataset (xarray.Dataset): The dataset to plot from.
-        time (int): The time index to plot.
-        title (str, optional): Overall title for the set of plots. Defaults to None (auto-generated).
+        time_indices (slice, list): Time indices to plot. Defaults to slice(0, 5) (first 5 time steps).
+        eta (int): The eta index (latitude-like) to plot. Defaults to 50.
+        xi (int): The xi index (longitude-like) to plot. Defaults to 50.
+        max_depth (int, optional): Maximum depth to consider for plotting. Defaults to 500m.
+        titles (list of str, optional): Titles for each subplot. Defaults to None (auto-generated titles).
+        cmap (str, optional): Colormap to use. Defaults to None.
+        vmin (float, optional): Minimum value for color scaling. Defaults to None (auto-determined).
+        vmax (float, optional): Maximum value for color scaling. Defaults to None (auto-determined).
+        suptitle (str, optional): Overall title for the figure. Defaults to None.
+        cbar (bool, optional): Whether to add a colorbar. Defaults to True.
+        auto_minmax (bool, optional): Whether to automatically determine vmin and vmax across datasets. Defaults to False.
 
     Returns:
-        tuple: A tuple containing:
-            - fig (matplotlib.figure.Figure): The figure object.
-            - ax (list of matplotlib.axes.Axes): A list of axes objects for the generated subplots.
+        tuple: Figure and axes objects.
     """
+    if isinstance(time_indices, int):  # Handle single time index input
+        time_indices = [time_indices]
+    num_plots = len(time_indices)
+    fig, axs = create_subplots(num_plots)
 
-    vars = ["u", "v", "w", "temp", "salt", "rho", "KE", "RV", "zeta"]
+
+    if vmin is None or vmax is None:
+        all_data = np.concatenate([dataset[variable][time, :, eta, xi].values.flatten() for time in time_indices])
+        cmap, vmin, vmax = get_colormap_and_limits(all_data, vmin=vmin, vmax=vmax)
+    if auto_minmax:
+        from .data_min_max_utils import get_minmax_datasets # Import here to avoid circular dependency
+        global_min_max = get_minmax_datasets([dataset], variable, time=time_indices, max_depth=max_depth) # Pass dataset as list and time slice
+        vmin, vmax = global_min_max[0], global_min_max[1] # unpack min and max values
+
+    ims = []
+    i = 0
+    for t_idx in time_indices:
+        time_in_months = dataset.time.values[t_idx] / (3600 * 24 * 30)
+        if titles is None:
+            title = f"Time: {time_in_months:.1f} months"
+        im = plot_depth(dataset, variable, time=t_idx, eta=eta, xi=xi, max_depth=max_depth, ax=axs[i], title=title, vmin=vmin, vmax=vmax, cmap=cmap, cbar=False, auto_minmax=False) # auto_minmax is handled at depths level
+        ims.append(im)
+        i += 1
+
+    if suptitle is None:
+        suptitle = f"Depth profiles of {variable} at eta={eta}, xi={xi}"
+    fig.suptitle(suptitle)
+    add_colorbar_to_subplots(fig, axs, ims, variable, orientation='vertical')
+    return fig, axs
+
+
+def compare_datasets(datasets, variable, time_idx=0, labels=None, cmap=None, vmin=None, vmax=None, robust=False, auto_minmax=False):
+    """
+    Compares surface plots of a given variable from multiple xarray Datasets at the same time index.
+
+    Parameters:
+        datasets (list of xarray.Dataset): A list of datasets to compare.
+        variable (str): The name of the variable to plot.
+        time_idx (int): The time index to plot. Defaults to 0 (first time step).
+        labels (list of str, optional): Labels for each dataset in the plot titles. Defaults to None (uses dataset index).
+        cmap (str, optional): Colormap to use. Defaults to None (viridis).
+        vmin (float, optional): Minimum value for color scaling. Defaults to None (auto-determined).
+        vmax (float, optional): Maximum value for color scaling. Defaults to None (auto-determined).
+        robust (bool, optional): Use robust min/max values for color scaling. Defaults to False.
+        auto_minmax (bool, optional): Whether to automatically determine vmin and vmax across datasets. Defaults to False.
+
+    Returns:
+        tuple: Figure and axes objects.
+    """
+    num_datasets = len(datasets)
+    fig, axs = create_subplots(num_datasets)
+
+    if labels is None:
+        labels = [f"Dataset {i+1}" for i in range(num_datasets)]
+
+    if vmin is None or vmax is None:
+        combined_data = np.concatenate([ds[variable][time_idx].values.flatten() for ds in datasets])
+        cmap, vmin, vmax = get_colormap_and_limits(combined_data, vmin=vmin, vmax=vmax)
+    if auto_minmax:
+        from .data_min_max_utils import get_minmax_datasets # Import here to avoid circular dependency
+        global_min_max = get_minmax_datasets(datasets, variable, time=time_idx) # Pass datasets list and time slice
+        vmin, vmax = global_min_max[0], global_min_max[1] # unpack min and max values
+
+    if cmap is None:
+        cmap = 'viridis'
+
+    ims = []
+    for i, dataset in enumerate(datasets):
+        ax = axs[i]
+        ax_im = plot_surface(dataset, variable, time_idx, ax=ax, title=f"{labels[i]}", vmin=vmin, vmax=vmax, cmap=cmap, cbar=False)[1]  # Get the image object
+        ims.append(ax_im)
+
+    fig.suptitle(f"Comparison of {variable} at Time {time_idx}")
+    add_colorbar_to_subplots(fig, axs, ims, variable)
+    return fig, axs
+
+
+def create_subplots(num_plots, max_columns=2, figsize=None):
+    """
+    Creates a grid of subplots dynamically adjusting rows and columns based on the number of plots.
+
+    Parameters:
+        num_plots (int): The number of subplots to create.
+        max_columns (int, optional): Maximum number of columns in the subplot grid. Defaults to 2.
+        figsize (tuple, optional): Figure size. Defaults to None (auto-determined).
+
+    Returns:
+        tuple: Figure and axes objects.
+    """
+    num_rows = (num_plots + max_columns - 1) // max_columns  # Calculate rows needed
+    num_cols = min(num_plots, max_columns)  # Adjust columns for the last row
+
+    if figsize is None:
+        figsize = (num_cols * 6, num_rows * 5)  # Adjust figure size based on the number of subplots
+
+    fig, axs = plt.subplots(num_rows, num_cols, figsize=figsize)
+
+    if num_plots == 1: # Handle single plot case to ensure axs is still iterable
+        axs = np.array([axs]) # make it a 1D array
+
+    # Hide any unused subplots if num_plots is not a perfect grid fill
+    if num_plots < num_rows * num_cols:
+        for i in range(num_plots, num_rows * num_cols):
+            fig.delaxes(axs.flatten()[i]) # remove extra subplots
+
+    return fig, axs
+
+
+def add_colorbar_to_subplots(fig, axs, ims, variable, orientation='right'):
+    """
+    Adds a single colorbar to a series of subplots.
+
+    Parameters:
+        fig (matplotlib.figure.Figure): The figure object containing the subplots.
+        axs (numpy.ndarray): Array of axes objects.
+        ims (list): List of image objects from the subplots.
+        variable (str): The name of the variable for the colorbar label.
+        orientation (str, optional): Orientation of the colorbar ('right' or 'bottom'). Defaults to 'right'.
+    """
+    if not ims:  # Check if ims is empty
+        return
+
+    if orientation == 'right':
+        pos = axs[-1].get_position()
+        cbar_ax = fig.add_axes([pos.x1 + 0.01, pos.y0, 0.02, pos.height])  # [left, bottom, width, height]
+    elif orientation == 'bottom':
+        pos = axs[-1].get_position()
+        cbar_ax = fig.add_axes([pos.x0, pos.y0 - 0.04, pos.width, 0.02])  # [left, bottom, width, height]
+        orientation = 'horizontal' # set orientation to horizontal for colorbar
+
+    fig.colorbar(ims[-1], cax=cbar_ax, label=variable, orientation=orientation)
+
+
+def plot_surface_vars(dataset, vars, time, max_columns=2, title="Surface Plots", figsize=None, auto_minmax=False):
+    """
+    Plots surface maps for multiple variables from a single dataset at a given time.
+
+    Parameters:
+        dataset (xarray.Dataset): The dataset containing the variables to plot.
+        vars (list of str): A list of variable names to plot.
+        time (int): The time index to plot.
+        max_columns (int, optional): Maximum number of columns in the subplot grid. Defaults to 2.
+        title (str, optional): Overall title for the figure. Defaults to "Surface Plots".
+        figsize (tuple, optional): Figure size. Defaults to None (auto-determined).
+        auto_minmax (bool, optional): Whether to automatically determine vmin and vmax across datasets. Defaults to False.
+
+    Returns:
+        tuple: Figure and axes objects.
+    """
     fig, ax = create_subplots(len(vars))
 
     for i, var in enumerate(vars):
-        plot_surface(dataset, var, time, ax=ax[i]) # use ax[i] instead of ax.flat[i] for consistency
+        plot_surface(dataset, var, time, ax=ax.flat[i], auto_minmax=auto_minmax) # Pass auto_minmax
         ax[i].label_outer()
 
     plt.suptitle(title, fontsize=15)
-    plt.tight_layout()
-
     return fig, ax
 
 
-def plot_depth_vars(dataset, time, eta=None, xi=None, max_depth=500, title=None):
+def plot_depth_vars(dataset, vars, time, eta=50, xi=50, max_depth=500, shading='gouraud', max_columns=2, title="Depth Plots", auto_minmax=False):
     """
-    Plots depth profiles for a set of standard physical variables.
-
-    Variables plotted are: 'u', 'v', 'w', 'temp', 'salt', 'rho', 'KE', 'RV'.
-    Generates a grid of subplots for these variables at a given time index, either zonal or meridional profiles.
+    Plots depth profile maps for multiple variables from a single dataset at a given time and location (eta, xi).
 
     Parameters:
-        dataset (xarray.Dataset): The dataset to plot from.
+        dataset (xarray.Dataset): The dataset containing the variables to plot.
+        vars (list of str): A list of variable names to plot.
         time (int): The time index to plot.
-        eta (int, optional): Index along latitudinal dimension (for zonal depth profile). Defaults to None (meridional profile).
-        xi (int, optional): Index along longitudinal dimension (for meridional depth profile). Defaults to None (zonal profile).
-        max_depth (float, optional): Maximum depth to plot. Defaults to 500m.
-        title (str, optional): Overall title for the set of plots. Defaults to None (auto-generated).
+        eta (int, optional): The eta index (latitude-like) to plot. Defaults to 50.
+        xi (int, optional): The xi index (longitude-like) to plot. Defaults to 50.
+        max_depth (int, optional): Maximum depth to consider for plotting. Defaults to 500m.
+        title (str, optional): Overall title for the figure. Defaults to "Depth Plots".
+        shading (str, optional): Shading mode for pcolormesh. Defaults to "gouraud".
+        max_columns (int, optional): Maximum number of columns in the subplot grid. Defaults to 2.
+        auto_minmax (bool, optional): Whether to automatically determine vmin and vmax across datasets. Defaults to False.
 
     Returns:
-        tuple: A tuple containing:
-            - fig (matplotlib.figure.Figure): The figure object.
-            - ax (list of matplotlib.axes.Axes): A list of axes objects for the generated subplots.
+        tuple: Figure and axes objects.
     """
-
-    vars = ["u", "v", "w", "temp", "salt", "rho", "KE", "RV"]
     fig, ax = create_subplots(len(vars))
 
     for i, var in enumerate(vars):
-        plot_depth(dataset, var, time, eta=eta, xi=xi, ax=ax[i], max_depth=max_depth) # use ax[i] instead of ax.flat[i] for consistency
+        plot_depth(dataset, var, time, eta=eta, xi=xi, ax=ax[i], max_depth=max_depth, auto_minmax=auto_minmax) # Pass auto_minmax
 
     #manually turn off inner labels
     for i in [1, 2, 3, 5, 6, 7]:
-        ax[i].set_ylabel('')
-        ax[i].set_yticklabels([])
-    for i in [0, 1, 2, 3]:
-        ax[i].set_xlabel('')
-        ax[i].set_xticklabels([])
-    plt.suptitle(title, fontsize=15)
-    plt.tight_layout()
+        if len(ax) > i: # avoid index error if fewer subplots than labels to turn off
+            ax.flat[i].label_outer()
 
+    plt.suptitle(title, fontsize=15)
     return fig, ax
 
 
-def plot_surface_biovars(dataset, time, title=None, max_columns=2, figsize=None):
+def plot_surface_biovars(dataset, time, max_columns=2, figsize=None, title="Surface Biogeochemical Variables", auto_minmax=False):
     """
-    Plots surface maps for a set of standard biological variables.
-
-    Variables plotted are: 'PHYTO', 'NO3'.
-    Generates a grid of subplots for these variables at a given time index.
+    Plots surface maps for a predefined set of biogeochemical variables.
 
     Parameters:
-        dataset (xarray.Dataset): The dataset to plot from.
+        dataset (xarray.Dataset): The dataset containing the variables to plot.
         time (int): The time index to plot.
-        title (str, optional): Overall title for the set of plots. Defaults to None (auto-generated).
         max_columns (int, optional): Maximum number of columns in the subplot grid. Defaults to 2.
-        figsize (tuple, optional): Figure size (width, height). Defaults to None.
+        figsize (tuple, optional): Figure size. Defaults to None (auto-determined).
+        title (str, optional): Overall title for the figure. Defaults to "Surface Biogeochemical Variables".
+        auto_minmax (bool, optional): Whether to automatically determine vmin and vmax across datasets. Defaults to False.
 
     Returns:
-        tuple: A tuple containing:
-            - fig (matplotlib.figure.Figure): The figure object.
-            - ax (list of matplotlib.axes.Axes): A list of axes objects for the generated subplots.
+        tuple: Figure and axes objects.
     """
-
-    # vars = ["PHYTO", "CHLA", "NO3"]
-    vars = ["PHYTO", "NO3"]
+    bio_vars = ['temp', 'salt', 'chlorophyll', 'oxygen', 'alkalinity', 'phytoplankton']
+    vars = [var for var in bio_vars if var in dataset] # plot only available vars
+    if not vars:
+        print("No biogeochemical variables found in the dataset.")
+        return None, None
 
     fig, ax = create_subplots(len(vars), max_columns=max_columns, figsize=figsize)
 
     for i, var in enumerate(vars):
-        plot_surface(dataset, var, time, ax=ax[i]) # use ax[i] instead of ax.flat[i] for consistency
+        plot_surface(dataset, var, time, ax=ax[i],  auto_minmax=auto_minmax) # Pass auto_minmax
         ax[i].label_outer()
 
     plt.suptitle(title, fontsize=15)
-    # plt.tight_layout()
-
     return fig, ax
 
-def plot_depth_biovars(dataset, time, depth=500, eta=None, xi=None, shading="gouraud", max_columns=2, figsize=None):
-    """
-    Plots depth profiles for a set of standard biological variables.
 
-    Variables plotted are: 'PHYTO', 'NO3'.
-    Generates a grid of subplots for these variables at a given time index, either zonal or meridional profiles.
+def plot_depth_biovars(dataset, time, eta=50, xi=50, max_depth=500, shading='gouraud', max_columns=2, figsize=None, title="Depth Biogeochemical Variables", auto_minmax=False):
+    """
+    Plots depth profile maps for a predefined set of biogeochemical variables.
 
     Parameters:
-        dataset (xarray.Dataset): The dataset to plot from.
+        dataset (xarray.Dataset): The dataset containing the variables to plot.
         time (int): The time index to plot.
-        depth (float, optional): Maximum depth to plot. Defaults to 500m.
-        eta (int, optional): Index along latitudinal dimension (for zonal depth profile). Defaults to None (meridional profile).
-        xi (int, optional): Index along longitudinal dimension (for meridional depth profile). Defaults to None (zonal profile).
+        eta (int, optional): The eta index (latitude-like) to plot. Defaults to 50.
+        xi (int, optional): The xi index (longitude-like) to plot. Defaults to 50.
+        max_depth (int, optional): Maximum depth to consider for plotting. Defaults to 500m.
         shading (str, optional): Shading mode for pcolormesh. Defaults to "gouraud".
         max_columns (int, optional): Maximum number of columns in the subplot grid. Defaults to 2.
-        figsize (tuple, optional): Figure size (width, height). Defaults to None.
+        figsize (tuple, optional): Figure size. Defaults to None (auto-determined).
+        title (str, optional): Overall title for the figure. Defaults to "Depth Biogeochemical Variables".
+        auto_minmax (bool, optional): Whether to automatically determine vmin and vmax across datasets. Defaults to False.
 
     Returns:
-        tuple: A tuple containing:
-            - fig (matplotlib.figure.Figure): The figure object.
-            - ax (list of matplotlib.axes.Axes): A list of axes objects for the generated subplots.
+        tuple: Figure and axes objects.
     """
-    vars = ["PHYTO", "NO3"]
+    bio_vars = ['temp', 'salt', 'chlorophyll', 'oxygen', 'alkalinity', 'phytoplankton']
+    vars = [var for var in bio_vars if var in dataset] # plot only available vars
+    if not vars:
+        print("No biogeochemical variables found in the dataset.")
+        return None, None
+
     fig, ax = create_subplots(len(vars), max_columns=max_columns, figsize=figsize)
 
-
     for i, var in enumerate(vars):
-        plot_depth(dataset, var, time, max_depth=depth, ax=ax[i], eta=eta, xi=xi, shading=shading) # use ax[i] instead of ax.flat[i] for consistency
+        plot_depth(dataset, var, time, eta=eta, xi=xi, ax=ax[i], max_depth=max_depth, auto_minmax=auto_minmax) # Pass auto_minmax
         ax[i].label_outer()
 
-    # plt.tight_layout()
-
+    plt.suptitle(title, fontsize=15)
     return fig, ax
-
-from .computation_utils import compute_average_KE, compute_total_KE # Import here to avoid circular dependency
-from .timeseries_plotting_utils import plot_over_time # Import here to avoid circular dependency
-from .data_min_max_utils import get_minmax_datasets # Import here to avoid circular dependency
