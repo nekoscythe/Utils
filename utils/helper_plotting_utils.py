@@ -132,45 +132,37 @@ def add_colorbar(fig, im, var_data, ax=None):
     return cbar
 
 
-def set_plot_labels(ax, var_data, xlabel=None, title=None, time_unit='months'):
+def set_plot_labels(ax, var_data, xlabel=None, title=None, time_value=None, time_unit='months'):
     """
     Sets common plot labels and titles.
 
     Parameters:
-        ax (matplotlib.axes.Axes): The axes object to set labels for.
-        var_data (xarray.DataArray): The data variable being plotted (used for long_name and units in title).
-        xlabel (str, optional): Label for the x-axis. Defaults to None.
-        title (str, optional): Title for the plot. Defaults to None (auto-generated from var_data).
-        time_unit (str, optional): Unit of time for the title, e.g., 'days', 'months', 'years'. Defaults to 'months'.
-
-    Returns:
-        matplotlib.colorbar.Colorbar: The colorbar object.
+        ax (matplotlib.axes.Axes):         The axes object to set labels for.
+        var_data (xarray.DataArray):      The data variable being plotted (used for long_name and units in title).
+        xlabel (str, optional):           Label for the x-axis. Defaults to None.
+        title (str, optional):            Title for the plot. Defaults to None (auto-generated from var_data).
+        time_value (float, optional):      Time value to be displayed in the title. Defaults to None (no time in title).
+        time_unit (str, optional):         Unit of time for the title, e.g., 'seconds', 'days', 'months', 'years'. Defaults to 'months'.
     """
     if title is None:
-        time_in_seconds = ax.get_title() # try to get time from existing title if available
-        if time_in_seconds:
-            try:
-                time_in_seconds = float(time_in_seconds.split("at ")[1].split(" ")[0]) #extract time value
-                if time_unit == 'hours':
-                    time_value = time_in_seconds / 3600
+        title = f"{var_data.attrs['long_name']}" # Default title without time
+        if time_value is not None: # Only add time to title if time_value is provided
+            try: # handle potential errors in time unit conversion
+                if time_unit == 'seconds':
+                    pass # time_value is already in seconds (assuming input is consistent)
+                elif time_unit == 'hours':
+                    time_value = time_value / (60*60) # convert seconds to hours
                 elif time_unit == 'days':
-                    time_value = time_in_seconds / (3600 * 24)
+                    time_value = time_value / (24*60*60) # convert seconds to hours
                 elif time_unit == 'weeks':
-                    time_value = time_in_seconds / (3600 * 24 * 7)
+                    time_value = time_value / (24 * 7*60*60) # convert seconds to hours
                 elif time_unit == 'months':
-                    time_value = time_in_seconds / (3600 * 24 * 30)
+                    time_value = time_value / (24 * 30*60*60) # convert seconds to hours
                 elif time_unit == 'years':
-                    time_value = time_in_seconds / (3600 * 24 * 365.25)
+                    time_value = time_value / (24 * 360*60*60) # convert seconds to hours
                 else:
-                    time_value = time_in_seconds / (3600 * 24 * 30) #default to months if unit is not recognized
-
-                title = f"{var_data.attrs['long_name']} at {time_value:.1f} {time_unit}"
-            except: # if parsing fails, just use long_name
-                 title = f"{var_data.attrs['long_name']}"
-        else:
-            title = f"{var_data.attrs['long_name']}"
-    ax.set_title(title, wrap=True, fontsize = 8)
-    if xlabel:
-        ax.set_xlabel(xlabel)
-    ax.set_ylabel('Latitude (Km)') # y label is consistently Latitude for surface plots
-    ax.set_aspect('equal')
+                    time_unit = 'months' # default to months if unit is not recognized
+                    time_value = time_value / (24 * 30*60*60) # convert seconds to hours
+            except: # catch any errors during time conversion
+                pass # if error, just use default time_unit and title.
+            title = f"{var_data.attrs['long_name']} at {time_value:.1f} {time_unit}" # add time to title
