@@ -130,7 +130,7 @@ def add_dV(dataset):
     return dV_da
 
 
-def preprocess(dataset, bio=False, output_path=None):
+def preprocess(dataset, bio=False, preprocess_done=False, output_path=None):
     """
     Applies a series of preprocessing steps to the input dataset.
     Does not modify the input dataset in-place.
@@ -156,25 +156,28 @@ def preprocess(dataset, bio=False, output_path=None):
                         The original dataset is not modified.
     """
     processed_dataset = dataset.copy() # work on a copy to avoid in-place modification
-    rv_da = add_RV(processed_dataset) # calculate derived variables as DataArrays
+    if not preprocess_done: 
+        rv_da = add_RV(processed_dataset) # calculate derived variables as DataArrays
+        
     processed_dataset = remove_ghost_points(processed_dataset) # remove ghost points from the copy
-    ke_da = add_KE(processed_dataset)
-    dv_da = add_dV(processed_dataset)
+    
+    if not preprocess_done:
+        ke_da = add_KE(processed_dataset)
+        dv_da = add_dV(processed_dataset)
 
-    processed_dataset = processed_dataset.assign({'RV': rv_da, 'KE': ke_da, 'dV': dv_da}) # assign derived variables to processed_dataset
-    add_km_grid(processed_dataset) # add km_grid to processed_dataset
+        processed_dataset = processed_dataset.assign({'RV': rv_da, 'KE': ke_da, 'dV': dv_da}) # assign derived variables to processed_dataset
+        add_km_grid(processed_dataset) # add km_grid to processed_dataset
 
     if bio:
         processed_dataset = non_negative_bio(processed_dataset)
     processed_dataset = reset_time(processed_dataset) # Use imported reset_time from general_utils
 
-    if output_path: # Save *additional* variables to NetCDF if output_path is provided
+    if output_path and not preprocess_done: # Save *additional* variables to NetCDF if output_path is provided
         additional_vars_ds = processed_dataset[['RV', 'KE', 'dV', 'lon_km', 'lat_km']] # create dataset with only additional vars
         additional_vars_ds.to_netcdf(output_path)
         print(f"Additional preprocessed variables saved to: {output_path}")
 
     return processed_dataset
-
 
 def load_and_preprocess(file_path, bio=False):
     """
@@ -193,6 +196,8 @@ def load_and_preprocess(file_path, bio=False):
     if os.path.exists(preprocessed_file_path): # Check if preprocessed file exists
         print(f"Loading preprocessed variables from: {preprocessed_file_path}")
         original_dataset = xroms.open_netcdf(file_path) # load original dataset
+        #preprocces to match the additional variables
+        original_dataset = preprocess(original_dataset, bio=bio, preprocess_done=True)
         additional_vars_ds = xr.open_dataset(preprocessed_file_path) # Load preprocessed variables
         preprocessed_dataset = xr.merge([original_dataset, additional_vars_ds], combine_attrs="override") # merge original and preprocessed
     else: # Preprocessed file does not exist, perform preprocessing and save
