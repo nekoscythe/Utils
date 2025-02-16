@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
-from .colormap_utils import get_colormap_and_limits
+from .helper_plotting_utils import get_colormap_and_limits, add_colorbar, set_plot_labels
 from .depth_utils import get_zlevs, get_depth_index
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -45,15 +45,11 @@ def plot_surface(dataset, variable, time_idx, ax=None, title=None, cmap=None, vm
 
     if title is None:
         title = f"{variable} at surface, Time: {time_in_months:.1f} {time_unit}"
-    ax.set_title(title)
-    ax.set_xlabel("Longitude (km)")
-    ax.set_ylabel("Latitude (km)")
+    set_plot_labels(ax, dataset[variable], title=title, xlabel="Longitude (km)", time_unit=time_unit)
     ax.set_aspect('equal', adjustable='box')
 
     if cbar:
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes("right", size="5%", pad=0.1)
-        fig.colorbar(im, cax=cax, label=variable)
+        add_colorbar(fig, im, dataset[variable], ax=ax)
 
     return ax, im
 
@@ -156,15 +152,13 @@ def plot_depth(dataset, variable, time, eta, xi, max_depth=500, ax=None, title=N
     time_in_months = dataset.time.values[time] / (3600 * 24 * 30)
     if title is None:
         title = f"{variable} depth profile, Time: {time_in_months:.1f} months, Location: eta={eta}, xi={xi}"
-    ax.set_title(title)
+    set_plot_labels(ax, dataset[variable], title=title, time_unit='months')
     ax.set_ylabel("Depth (m)")
     ax.set_xticks([])  # remove xticks for time axis
     ax.invert_yaxis()  # Invert y-axis to have depth increasing downwards
 
     if cbar:
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes("right", size="5%", pad=0.1)
-        fig.colorbar(im, cax=cax, label=variable)
+        add_colorbar(fig, im, dataset[variable], ax=ax)
 
     return im
 
@@ -262,6 +256,8 @@ def compare_datasets(datasets, variable, time_idx=0, labels=None, cmap=None, vmi
         ax = axs[i]
         ax_im = plot_surface(dataset, variable, time_idx, ax=ax, title=f"{labels[i]}", vmin=vmin, vmax=vmax, cmap=cmap, cbar=False)[1]  # Get the image object
         ims.append(ax_im)
+        set_plot_labels(ax, dataset[variable], title=f"{labels[i]}")
+
 
     fig.suptitle(f"Comparison of {variable} at Time {time_idx}")
     add_colorbar_to_subplots(fig, axs, ims, variable)
