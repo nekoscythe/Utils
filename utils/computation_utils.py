@@ -17,7 +17,10 @@ def compute_surface_average(ds, var, s_rho=-1):
     """
     data = ds[var][:, s_rho]
     dA = ds.dA.values
-    dA = dA.reshape((1, dA.shape[0], dA.shape[1]))
+    if dA.ndim == 2: # Assuming it's (lat, lon)
+        dA = dA.reshape((1, dA.shape[0], dA.shape[1]))
+    elif dA.ndim != 3:
+        raise ValueError("dA should have 2 or 3 dimensions (lat, lon) or (time, lat, lon)")
     weighted = data * dA
     return np.mean(weighted, axis=(1, 2)) / np.mean(dA)
 
