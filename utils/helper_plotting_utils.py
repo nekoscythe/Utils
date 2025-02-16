@@ -132,7 +132,7 @@ def add_colorbar(fig, im, var_data, ax=None):
     return cbar
 
 
-def set_plot_labels(ax, var_data, xlabel=None, title=None):
+def set_plot_labels(ax, var_data, xlabel=None, title=None, time_unit='months'):
     """
     Sets common plot labels and titles.
 
@@ -141,14 +141,32 @@ def set_plot_labels(ax, var_data, xlabel=None, title=None):
         var_data (xarray.DataArray): The data variable being plotted (used for long_name and units in title).
         xlabel (str, optional): Label for the x-axis. Defaults to None.
         title (str, optional): Title for the plot. Defaults to None (auto-generated from var_data).
+        time_unit (str, optional): Unit of time for the title, e.g., 'days', 'months', 'years'. Defaults to 'months'.
 
     Returns:
         matplotlib.colorbar.Colorbar: The colorbar object.
     """
     if title is None:
-        time_in_months = ax.get_title() # try to get time from existing title if available
-        if time_in_months:
-            title = f"{var_data.attrs['long_name']} at {time_in_months}"
+        time_in_seconds = ax.get_title() # try to get time from existing title if available
+        if time_in_seconds:
+            try:
+                time_in_seconds = float(time_in_seconds.split("at ")[1].split(" ")[0]) #extract time value
+                if time_unit == 'hours':
+                    time_value = time_in_seconds / 3600
+                elif time_unit == 'days':
+                    time_value = time_in_seconds / (3600 * 24)
+                elif time_unit == 'weeks':
+                    time_value = time_in_seconds / (3600 * 24 * 7)
+                elif time_unit == 'months':
+                    time_value = time_in_seconds / (3600 * 24 * 30)
+                elif time_unit == 'years':
+                    time_value = time_in_seconds / (3600 * 24 * 365.25)
+                else:
+                    time_value = time_in_seconds / (3600 * 24 * 30) #default to months if unit is not recognized
+
+                title = f"{var_data.attrs['long_name']} at {time_value:.1f} {time_unit}"
+            except: # if parsing fails, just use long_name
+                 title = f"{var_data.attrs['long_name']}"
         else:
             title = f"{var_data.attrs['long_name']}"
     ax.set_title(title, wrap=True, fontsize = 8)
