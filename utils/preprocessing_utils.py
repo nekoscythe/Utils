@@ -39,16 +39,19 @@ def add_KE(dataset):
     if 'u' not in dataset or 'v' not in dataset: # Input validation: check for u and v
         raise ValueError("Dataset must contain variables 'u' and 'v' to compute KE.")
 
-    u = dataset.u.values
-    v = dataset.v.values
+    dataset_copy = dataset.copy(deep=True) # Work on a copy to avoid in-place modification
+    u = dataset_copy.u.values
+    v = dataset_copy.v.values
 
     u_mid = 0.5 * (u[..., :-1] + u[..., 1:])  # Interpolate u to rho points
     v_mid = 0.5 * (v[..., :-1, :] + v[..., 1:, :])  # Interpolate v to rho points
 
     KE = 0.5 * (u_mid**2 + v_mid**2) #this is just 1/2 * velocity^2
-    #create KE DataArray
-    KE_da = xr.DataArray(KE, coords=dataset.u.isel(xi_rho=slice(1,-1), eta_rho=slice(1,-1), time=slice(None)).coords, dims=('time', 's_rho', 'eta_rho', 'xi_rho'), name='KE', attrs={'long_name' : 'kinetic energy', 'units': 'meter2 second-2'})
-    KE_da = KE_da.chunk(dataset.u.chunk()) # rechunk to match original dataset
+    
+    dataset_copy['KE'] = (('time', 's_rho', 'eta_rho', 'xi_rho'), KE, {'long_name' : 'kinetic energy', 'units': 'meter2 second-2'}) #add KE to dataset
+
+    dataset_copy['KE'] = dataset_copy.KE.chunk() # rechunk to match original dataset
+    KE_da = dataset_copy['KE']
 
     return KE_da
 
@@ -73,22 +76,25 @@ def add_RV(dataset):
     for var in required_vars:
         if var not in dataset:
             raise ValueError(f"Dataset must contain variable '{var}' to compute RV.")
+        
+    dataset_copy = dataset.copy(deep=True) # Work on a copy to avoid in-place modification
 
-    pm = dataset.pm.values #1/dx
-    pn = dataset.pn.values #1/dy
+    pm = dataset_copy.pm.values #1/dx
+    pn = dataset_copy.pn.values #1/dy
 
     pm_psi = 0.25 * (pm[:-1, :-1] + pm[1:, :-1] + pm[:-1, 1:] + pm[1:, 1:]) # interpolate pm to psi points
     pn_psi = 0.25 * (pn[:-1, :-1] + pn[1:, :-1] + pn[:-1, 1:] + pn[1:, 1:]) # interpolate pn to psi points
 
-    dv = dataset.v[:,:,:, 1:] - dataset.v[:,:,:, :-1]
-    du = dataset.u[:,:, 1:, :] - dataset.u[:,:, :-1, :]
+    dv = dataset_copy.v[:,:,:, 1:].values - dataset_copy.v[:,:,:, :-1].values
+    du = dataset_copy.u[:,:, 1:, :].values - dataset_copy.u[:,:, :-1, :].values
 
 
     zeta_vort = (dv * pm_psi) - (du * pn_psi) # dv/dx - du/dy
+    
+    dataset_copy['RV'] =  (('time', 's_rho', 'eta_v', 'xi_u'), zeta_vort, {'long_name' : 'relative vorticity', 'units': 'second-1'})
+    RV_da = dataset_copy['RV']
 
-    #create RV DataArray
-    RV_da = xr.DataArray(zeta_vort, coords=dataset.v.isel(xi_rho=slice(1,-1), eta_v=slice(1,-1), time=slice(None)).coords, dims=('time', 's_rho', 'eta_v', 'xi_u'), name='RV', attrs={'long_name' : 'relative vorticity', 'units': 'second-1'})
-    RV_da = RV_da.chunk(dataset.v.chunk()) # rechunk to match original dataset
+    
     return RV_da
 
 
@@ -112,13 +118,15 @@ def add_dV(dataset):
         if var not in dataset:
             raise ValueError(f"Dataset must contain variable '{var}' to compute dV.")
 
+    dataset_copy = dataset.copy(deep=True) # Work on a copy to avoid in-place modification
     dz = np.diff(dataset.z_w, axis=1)
 
-    # dA = dx_expanded * dy_expanded  # surface area of each cell
     dV = dataset.dA.values * dz  # volume of each cell
+    
+    dataset_copy['dV'] = (('time', 's_rho', 'eta', 'xi'), dV, {'long_name' : 'volume of cells on RHO grid' , 'units': 'meter3'})
 
-    dV_da = xr.DataArray(dV, coords=dataset.dA.coords, dims=('time', 's_rho', 'eta', 'xi'), name='dV', attrs={'long_name' : 'volume of cells on RHO grid' , 'units': 'meter3'})
-    dV_da = dV_da.chunk(dataset.dA.chunk()) # rechunk to match original dataset
+    dataset_copy['dV'] = dataset_copy.dV.chunk() # Chunk the DataArray for better performance
+    dV_da = dataset_copy.dV
     return dV_da
 
 
@@ -154,7 +162,7 @@ def preprocess(dataset, bio=False, output_path=None):
     dv_da = add_dV(processed_dataset)
 
     processed_dataset = processed_dataset.assign({'RV': rv_da, 'KE': ke_da, 'dV': dv_da}) # assign derived variables to processed_dataset
-    processed_dataset = add_km_grid(processed_dataset) # add km_grid to processed_dataset
+    add_km_grid(processed_dataset) # add km_grid to processed_dataset
 
     if bio:
         processed_dataset = non_negative_bio(processed_dataset)
@@ -184,12 +192,12 @@ def load_and_preprocess(file_path, bio=False):
 
     if os.path.exists(preprocessed_file_path): # Check if preprocessed file exists
         print(f"Loading preprocessed variables from: {preprocessed_file_path}")
-        original_dataset = xr.open_dataset(file_path) # load original dataset
+        original_dataset = xroms.open_netcdf(file_path) # load original dataset
         additional_vars_ds = xr.open_dataset(preprocessed_file_path) # Load preprocessed variables
         preprocessed_dataset = xr.merge([original_dataset, additional_vars_ds], combine_attrs="override") # merge original and preprocessed
     else: # Preprocessed file does not exist, perform preprocessing and save
         print(f"Preprocessing dataset from: {file_path}")
-        dataset = xr.open_dataset(file_path) # Load original dataset
+        dataset = xroms.open_netcdf(file_path) # Load original dataset
         preprocessed_dataset = preprocess(dataset, bio=bio, output_path=preprocessed_file_path) # Preprocess and save additional vars
 
     return preprocessed_dataset
