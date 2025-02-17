@@ -1,7 +1,6 @@
 import xarray as xr
 import numpy as np
-import matplotlib.pyplot as plt
-from .plotting_utils import plot_surface_biovars, plot_depth_biovars
+import matplotlib.pyplot as plt # Import matplotlib.pyplot
 
 
 def reset_time(dataset):
@@ -80,17 +79,4 @@ def print_minmax_biovars(ds):
           f"Min CHLA: {min_chla:.2f}, Max CHLA: {max_chla:.2f}")
 
 
-def plot_all(ds):
-    """
-    Generates and displays surface and depth plots for biological variables over all time steps.
 
-    This function iterates through each time step in the dataset and calls 'plot_surface_biovars'
-    and 'plot_depth_biovars' to create plots for PHYTO, NO3, and CHLA. Plots are displayed using plt.show().
-
-    Parameters:
-        ds (xarray.Dataset): The dataset to plot.
-    """
-    for time in np.arange(0, len(ds.time), 1):
-       plot_surface_biovars(ds, time)
-       plot_depth_biovars(ds, time)
-       plt.show()

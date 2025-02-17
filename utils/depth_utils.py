@@ -76,32 +76,17 @@ def get_zlevs(dataset):
 
 def get_depth_index(z_levs, depth):
     """
-    Finds the index in the z-levels array that corresponds to a given depth.
-
-    This function searches for the index in the 'z_levs' array that is closest to and shallower
-    than or equal to the specified 'depth'. It assumes 'z_levs' are negative values representing
-    depth below the surface and are sorted in increasing depth (more negative values are deeper).
-
-    Args:
-        z_levs (np.ndarray): Array of depth levels (negative values, increasing downwards).
-        depth (float): Target depth in meters (positive value).
-
+    Get the index corresponding to a given depth.
+    
+    Parameters:
+        z_levs (xarray.DataArray): Depth levels.
+        depth (float): Target depth in meters.
+    
     Returns:
-        int: The index in 'z_levs' corresponding to the closest depth level that is shallower
-             than or equal to the target depth. Index 0 corresponds to the deepest level.
-             Returns the index of the deepest level (0) if the target depth exceeds the maximum
-             depth in 'z_levs'.
-
-    Raises:
-        Warning: If the target depth exceeds the maximum depth, a warning is printed, and the bottom index (0) is returned.
+        int: Index of the closest depth.
     """
-    z = np.abs(z_levs) # Work with positive depths for comparison
+    z = np.abs(z_levs)
     if depth >= z.max():
         print(f"Warning: Depth {depth} exceeds the maximum depth {z.max()}. Using bottom index.")
-        return len(z_levs) - 1 # Bottom index (last index in standard Python indexing, deepest level here)
-
-    # Use searchsorted to find the index. 'right' side ensures we get the index of the first
-    # element in z that is *greater* than depth. Subtracting 1 then gives the index of the
-    # element just shallower than or equal to depth.
-    index = np.searchsorted(z, depth, side='right') 
-    return max(0, index - 1) # Ensure index is not negative and at least 0
+        return 0 # Bottom index
+    return (z <= depth).argmax() - 1

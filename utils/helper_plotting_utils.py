@@ -7,6 +7,40 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 # Plotting Helpers
 ##################
 
+def convert_time(time, unit="months"):
+    """
+    Converts time values to a specified unit.
+
+    This function converts time values to a specified unit (e.g., months, days, years).
+
+    Parameters:
+        time (xarray.DataArray): The time values to convert (in seconds).s
+        unit (str, optional): The unit to convert to. Defaults to "months".
+
+    Returns:
+        xarray.DataArray: The converted time values.
+    """
+    # convert time to np.timedelta64 in seconds
+    time = np.timedelta64(int(time), 's')
+    if unit == "months":
+        return time / np.timedelta64(30, 'D'), unit
+    elif unit == "minutes":
+        return time / np.timedelta64(1, 'm'), unit
+    elif unit == "seconds":
+        return time / np.timedelta64(1, 's'), unit
+    elif unit == "hours":
+        return time / np.timedelta64(1, 'h'), unit
+    elif unit == "days":
+        return time / np.timedelta64(1, 'D'), unit
+    elif unit == "weeks":
+        return time / np.timedelta64(7, 'D'), unit
+    elif unit == "years":
+        return time / np.timedelta64(360, 'D'), unit
+    else:
+        #default to months
+        return time / np.timedelta64(30, 'D'), "months"
+
+
 
 def get_optimal_subplot_dims(n, max_columns=4):
     """
@@ -132,7 +166,7 @@ def add_colorbar(fig, im, var_data, ax=None):
     return cbar
 
 
-def set_plot_labels(ax, var_data, xlabel=None, title=None, time_value=None, time_unit='months'):
+def set_plot_labels(ax, var_data, xlabel=None, ylabel=None, title=None, time_value=None, time_unit='months'):
     """
     Sets common plot labels and titles.
 
@@ -147,22 +181,12 @@ def set_plot_labels(ax, var_data, xlabel=None, title=None, time_value=None, time
     if title is None:
         title = f"{var_data.attrs['long_name']}" # Default title without time
         if time_value is not None: # Only add time to title if time_value is provided
-            try: # handle potential errors in time unit conversion
-                if time_unit == 'seconds':
-                    pass # time_value is already in seconds (assuming input is consistent)
-                elif time_unit == 'hours':
-                    time_value = time_value / (60*60) # convert seconds to hours
-                elif time_unit == 'days':
-                    time_value = time_value / (24*60*60) # convert seconds to hours
-                elif time_unit == 'weeks':
-                    time_value = time_value / (24 * 7*60*60) # convert seconds to hours
-                elif time_unit == 'months':
-                    time_value = time_value / (24 * 30*60*60) # convert seconds to hours
-                elif time_unit == 'years':
-                    time_value = time_value / (24 * 360*60*60) # convert seconds to hours
-                else:
-                    time_unit = 'months' # default to months if unit is not recognized
-                    time_value = time_value / (24 * 30*60*60) # convert seconds to hours
-            except: # catch any errors during time conversion
-                pass # if error, just use default time_unit and title.
+            time_value, time_unit = convert_time(time_value, unit=time_unit) # convert time to specified unit
             title = f"{var_data.attrs['long_name']} at {time_value:.1f} {time_unit}" # add time to title
+        else:
+            title = f"{var_data.attrs['long_name']}"
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    
+    
