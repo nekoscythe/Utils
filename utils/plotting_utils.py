@@ -48,7 +48,7 @@ def plot_surface(dataset, variable, time_idx, ax=None, title=None, cmap=None, vm
     return ax, im
 
 
-def plot_surfaces(dataset, variable, time_idx=range(5), titles=None, cmap=None, vmin=None, vmax=None, suptitle=None, time_unit='days'):
+def plot_surfaces(dataset, variable, time_idx=range(5), titles=None, cmap=None, vmin=None, vmax=None, suptitle=None, time_unit='days', max_columns=2):
     """
     Plots a series of surface maps for a given variable over multiple time indices.
 
@@ -69,7 +69,7 @@ def plot_surfaces(dataset, variable, time_idx=range(5), titles=None, cmap=None, 
     if isinstance(time_idx, int):  # Handle single time index input
         time_idx = [time_idx]
     num_plots = len(time_idx)
-    fig, axs = create_subplots(num_plots)
+    fig, axs = create_subplots(num_plots, max_columns=max_columns)
     axs = axs.flatten()
 
 
@@ -158,7 +158,7 @@ def plot_depth(dataset, variable, time, eta=None, xi=None, max_depth=500, z_levs
     return im
 
 
-def plot_depths(dataset, variable, time_indices=range(5), eta=None, xi=None, max_depth=500, titles=None, cmap=None, vmin=None, vmax=None, suptitle=None, cbar=True, time_unit='days'):
+def plot_depths(dataset, variable, time_indices=range(5), eta=None, xi=None, max_depth=500, titles=None, cmap=None, vmin=None, vmax=None, suptitle=None, cbar=True, time_unit='days', max_columns=2):
     """
     Plots a series of depth profile maps for a given variable over multiple time indices at a fixed location (eta, xi).
 
@@ -183,7 +183,7 @@ def plot_depths(dataset, variable, time_indices=range(5), eta=None, xi=None, max
     if isinstance(time_indices, int):  # Handle single time index input
         time_indices = [time_indices]
     num_plots = len(time_indices)
-    fig, axs = create_subplots(num_plots)
+    fig, axs = create_subplots(num_plots, max_columns=max_columns)
     axs = axs.flatten()
     
     if vmin is None or vmax is None:
@@ -208,7 +208,7 @@ def plot_depths(dataset, variable, time_indices=range(5), eta=None, xi=None, max
     return fig, axs
 
 
-def compare_datasets(datasets, variable, time_idx=0, labels=None, cmap=None, vmin=None, vmax=None, time_unit='days'):
+def compare_datasets(datasets, variable, time_idx=0, labels=None, cmap=None, vmin=None, vmax=None, time_unit='days', max_columns=2):
     """
     Compares surface plots of a given variable from multiple xarray Datasets at the same time index.
 
@@ -226,7 +226,7 @@ def compare_datasets(datasets, variable, time_idx=0, labels=None, cmap=None, vmi
         tuple: Figure and axes objects.
     """
     num_datasets = len(datasets)
-    fig, axs = create_subplots(num_datasets)
+    fig, axs = create_subplots(num_datasets, max_columns=max_columns)
     axs= axs.flatten()
 
     if labels is None:
