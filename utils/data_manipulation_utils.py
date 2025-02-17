@@ -21,8 +21,7 @@ def interpolate_to_rho(var_data):
         data = (data[..., :-1, :] + data[..., 1:, :]) / 2
     if len(var_data.dims) <= 2: # 2D data
         return data
-    if var_data.dims[-3] != 's_rho':
-        if var_data.dims[-1] != 'time': #ignore time dimension
+    if var_data.dims[-3] != 's_rho' and var_data.dims[-3] != 'time':
             data = (data[...,  :-1, :, :] + data[...,  1:, :, :]) / 2
 
     return data
