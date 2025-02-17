@@ -208,7 +208,7 @@ def plot_depths(dataset, variable, time_indices=range(5), eta=None, xi=None, max
     return fig, axs
 
 
-def compare_datasets(datasets, variable, time_idx=0, labels=None, cmap=None, vmin=None, vmax=None, auto_minmax=True, time_unit='days'):
+def compare_datasets(datasets, variable, time_idx=0, labels=None, cmap=None, vmin=None, vmax=None, time_unit='days'):
     """
     Compares surface plots of a given variable from multiple xarray Datasets at the same time index.
 
@@ -227,17 +227,14 @@ def compare_datasets(datasets, variable, time_idx=0, labels=None, cmap=None, vmi
     """
     num_datasets = len(datasets)
     fig, axs = create_subplots(num_datasets)
+    axs= axs.flatten()
 
     if labels is None:
         labels = [f"Dataset {i+1}" for i in range(num_datasets)]
 
-    if auto_minmax:
-        global_min_max = get_minmax_datasets(datasets, variable, time=time_idx) # Pass datasets list and time slice
-        vmin, vmax = global_min_max[0], global_min_max[1] # unpack min and max values
-        
-    elif vmin is None or vmax is None:
-        combined_data = np.concatenate([ds[variable][time_idx].values.flatten() for ds in datasets])
-        cmap, vmin, vmax = get_colormap_and_limits(combined_data, vmin=vmin, vmax=vmax)
+    
+    combined_data = np.concatenate([ds[variable][time_idx].values.flatten() for ds in datasets])
+    cmap, vmin, vmax = get_colormap_and_limits(combined_data, vmin=vmin, vmax=vmax)
 
 
     ims = []
@@ -245,12 +242,15 @@ def compare_datasets(datasets, variable, time_idx=0, labels=None, cmap=None, vmi
         ax = axs[i]
         ax_im = plot_surface(dataset, variable, time_idx, ax=ax, title=f"{labels[i]}", vmin=vmin, vmax=vmax, cmap=cmap, cbar=False)[1]  # Get the image object
         ims.append(ax_im)
-        set_plot_labels(ax, dataset[variable], title=f"{labels[i]}")
+        ax.label_outer()
+        
 
     time_val = datasets[0].time[time_idx].values
     time_val, time_unit = convert_time(time_val, unit=time_unit)
 
     fig.suptitle(f"Comparison of {variable} at {time_val:.1f} {time_unit}")
+    plt.tight_layout()
+    
     add_colorbar_to_subplots(fig, axs, ims, variable)
     return fig, axs
 
@@ -309,13 +309,14 @@ def plot_surface_vars(dataset, vars, time, max_columns=2, title="Surface Plots",
         ax[i].label_outer()
 
     plt.suptitle(title, fontsize=15)
+    plt.tight_layout()
     return fig, ax
 
 
 
 
 
-def plot_depth_vars(dataset, vars, time, eta=50, xi=50, max_depth=500, shading='gouraud', max_columns=2, title="Depth Plots", auto_minmax=False):
+def plot_depth_vars(dataset, vars, time, eta=None, xi=None, max_depth=500, shading='gouraud', max_columns=2, title="Depth Plots"):
     """
     Plots depth profile maps for multiple variables from a single dataset at a given time and location (eta, xi).
 
@@ -334,21 +335,21 @@ def plot_depth_vars(dataset, vars, time, eta=50, xi=50, max_depth=500, shading='
     Returns:
         tuple: Figure and axes objects.
     """
-    fig, ax = create_subplots(len(vars))
+    fig, ax = create_subplots(len(vars), max_columns=max_columns)
 
     for i, var in enumerate(vars):
-        plot_depth(dataset, var, time, eta=eta, xi=xi, ax=ax[i], max_depth=max_depth, auto_minmax=auto_minmax) # Pass auto_minmax
+        plot_depth(dataset, var, time, eta=eta, xi=xi, ax=ax[i], max_depth=max_depth, shading=shading)
 
-    #manually turn off inner labels
-    for i in [1, 2, 3, 5, 6, 7]:
-        if len(ax) > i: # avoid index error if fewer subplots than labels to turn off
-            ax.flat[i].label_outer()
+    for ax in ax.flatten():
+        ax.label_outer()
 
     plt.suptitle(title, fontsize=15)
+    plt.tight_layout()
+    
     return fig, ax
 
 
-def plot_surface_biovars(dataset, time, max_columns=2, figsize=None, title="Surface Biogeochemical Variables", auto_minmax=False):
+def plot_surface_biovars(dataset, time, max_columns=2, figsize=None, title="Surface Biogeochemical Variables"):
     """
     Plots surface maps for a predefined set of biogeochemical variables.
 
@@ -363,7 +364,7 @@ def plot_surface_biovars(dataset, time, max_columns=2, figsize=None, title="Surf
     Returns:
         tuple: Figure and axes objects.
     """
-    bio_vars = ['temp', 'salt', 'chlorophyll', 'oxygen', 'alkalinity', 'phytoplankton']
+    bio_vars = ['PHYTO', 'NO3']
     vars = [var for var in bio_vars if var in dataset] # plot only available vars
     if not vars:
         print("No biogeochemical variables found in the dataset.")
@@ -372,28 +373,28 @@ def plot_surface_biovars(dataset, time, max_columns=2, figsize=None, title="Surf
     fig, ax = create_subplots(len(vars), max_columns=max_columns, figsize=figsize)
 
     for i, var in enumerate(vars):
-        plot_surface(dataset, var, time, ax=ax[i],  auto_minmax=auto_minmax) # Pass auto_minmax
+        plot_surface(dataset, var, time, ax=ax[i]) # Pass auto_minmax
         ax[i].label_outer()
 
     plt.suptitle(title, fontsize=15)
+    plt.tight_layout()
     return fig, ax
 
 
-def plot_depth_biovars(dataset, time, eta=50, xi=50, max_depth=500, shading='gouraud', max_columns=2, figsize=None, title="Depth Biogeochemical Variables", auto_minmax=False):
+def plot_depth_biovars(dataset, time, eta=None, xi=None, max_depth=500, shading='gouraud', max_columns=2, figsize=None, title="Depth Biogeochemical Variables"):
     """
     Plots depth profile maps for a predefined set of biogeochemical variables.
 
     Parameters:
         dataset (xarray.Dataset): The dataset containing the variables to plot.
         time (int): The time index to plot.
-        eta (int, optional): The eta index (latitude-like) to plot. Defaults to 50.
-        xi (int, optional): The xi index (longitude-like) to plot. Defaults to 50.
+        eta (int, optional): The eta index (latitude-like) to plot.
+        xi (int, optional): The xi index (longitude-like) to plot.
         max_depth (int, optional): Maximum depth to consider for plotting. Defaults to 500m.
         shading (str, optional): Shading mode for pcolormesh. Defaults to "gouraud".
         max_columns (int, optional): Maximum number of columns in the subplot grid. Defaults to 2.
         figsize (tuple, optional): Figure size. Defaults to None (auto-determined).
         title (str, optional): Overall title for the figure. Defaults to "Depth Biogeochemical Variables".
-        auto_minmax (bool, optional): Whether to automatically determine vmin and vmax across datasets. Defaults to False.
 
     Returns:
         tuple: Figure and axes objects.
@@ -407,24 +408,9 @@ def plot_depth_biovars(dataset, time, eta=50, xi=50, max_depth=500, shading='gou
     fig, ax = create_subplots(len(vars), max_columns=max_columns, figsize=figsize)
 
     for i, var in enumerate(vars):
-        plot_depth(dataset, var, time, eta=eta, xi=xi, ax=ax[i], max_depth=max_depth, auto_minmax=auto_minmax) # Pass auto_minmax
+        plot_depth(dataset, var, time, eta=eta, xi=xi, ax=ax[i], max_depth=max_depth, shading=shading) 
         ax[i].label_outer()
 
     plt.suptitle(title, fontsize=15)
+    plt.tight_layout()
     return fig, ax
-
-
-def plot_all(ds):
-    """
-    Generates and displays surface and depth plots for biological variables over all time steps.
-
-    This function iterates through each time step in the dataset and calls 'plot_surface_biovars'
-    and 'plot_depth_biovars' to create plots for PHYTO, NO3, and CHLA. Plots are displayed using plt.show().
-
-    Parameters:
-        ds (xarray.Dataset): The dataset to plot.
-    """
-    for time in np.arange(0, len(ds.time), 1):
-       plot_surface_biovars(ds, time)
-       plot_depth_biovars(ds, time)
-       plt.show()
