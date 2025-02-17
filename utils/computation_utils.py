@@ -1,5 +1,6 @@
 import numpy as np
 from .depth_utils import get_zlevs, get_depth_index # Import at the beginning
+from .data_manipulation_utils import interpolate_to_rho # Import at the beginning
 import xarray as xr
 
 def compute_surface_average(ds, var, s_rho=-1):
@@ -17,6 +18,7 @@ def compute_surface_average(ds, var, s_rho=-1):
         np.ndarray: The time series of the surface weighted average.
     """
     data = ds[var][:, s_rho]
+    data = interpolate_to_rho(data)
     dA = ds.dA.values
     if dA.ndim == 2: # Assuming it's (lat, lon)
         dA = dA.reshape((1, dA.shape[0], dA.shape[1]))
@@ -25,6 +27,30 @@ def compute_surface_average(ds, var, s_rho=-1):
     weighted = data * dA
     return np.mean(weighted, axis=(1, 2)) / np.mean(dA)
 
+
+def compute_total(dataset, variable, depth=-1):
+    """
+    Calculate the total of a given variable in the entire domain (or till specific depth) over time.
+    
+    Parameters:
+        dataset (xarray.Dataset): The dataset containing the variable.
+        variable (str): The name of the variable to calculate the total for.
+        depth (int, optional): The depth in meters to calculate the total for.
+                               Defaults to -1, which means total over all depths.
+    """
+    data = dataset[variable]
+    data_vals = interpolate_to_rho(data)
+    dV = dataset.dV.values
+
+    if depth != -1:
+        z_levs , _ = get_zlevs(dataset)
+        idx = get_depth_index(z_levs, depth)
+        data_vals = data_vals[:, :idx+1]
+        dV = dV[:, :idx+1]
+
+    total = np.sum(data_vals * dV, axis=(1, 2, 3))
+
+    return total
 
 def compute_weighted_average(dataset, variable, depth=-1):
     """
@@ -42,59 +68,15 @@ def compute_weighted_average(dataset, variable, depth=-1):
     Returns:
         np.ndarray: The time series of the volume-weighted average of the variable.
     """
-    data_vals = dataset[variable].values
+    total = compute_total(dataset, variable, depth)
     dV = dataset.dV.values
 
     if depth != -1:
         z_levs , _ = get_zlevs(dataset)
         idx = get_depth_index(z_levs, depth)
-        data_vals = dataset[variable][:, :idx+1].values # Corrected slicing
-        dV = dataset.dV[:, :idx+1].values # Corrected slicing
-
+        dV = dV[:, :idx+1]
+    
     total_volume = np.sum(dV, axis=(1, 2, 3))
-    weighted_avg_over_time = np.sum(data_vals * dV, axis=(1, 2, 3)) / total_volume
+    weighted_avg_over_time = total / total_volume
 
     return weighted_avg_over_time
-
-
-def compute_total_KE(dataset):
-    """
-    Compute the total kinetic energy (KE) of the flow over time.
-
-    Total KE is calculated by summing the KE in each grid cell, weighted by the cell volume
-    and density.
-
-    Parameters:
-        dataset (xarray.Dataset): The dataset containing 'KE', 'dV', 'rho', and 'rho0'.
-
-    Returns:
-        np.ndarray: The time series of the total kinetic energy of the flow.
-    """
-
-    dV = dataset.dV.values # volume of cell centered at rho points
-    densities = dataset.rho.values + dataset.rho0.values # remove ghost cells and add rho0
-    total_KE = dataset.KE.values * dV * densities # multiply by volume and density to get kinetic energy
-
-    total_KE_over_time = np.sum(total_KE, axis=(1, 2, 3))
-
-    return total_KE_over_time
-
-
-def compute_average_KE(dataset):
-    """
-    Compute the average kinetic energy (KE) of the flow over time.
-
-    Average KE is calculated as the volume-weighted average of KE over all grid cells.
-
-    Parameters:
-        dataset (xarray.Dataset): The dataset containing 'KE' and 'dV'.
-
-    Returns:
-        np.ndarray: The time series of the average kinetic energy of the flow.
-    """
-    #weigted average of KE
-    total_volume = np.sum(dataset.dV.values, axis=(1, 2, 3))
-
-    average_KE_over_time = np.sum(dataset.KE.values * dataset.dV.values, axis=(1, 2, 3)) / total_volume
-
-    return average_KE_over_time
