@@ -37,8 +37,8 @@ def convert_time(time, unit="months"):
     elif unit == "years":
         return time / np.timedelta64(360, 'D'), unit
     else:
-        #default to months
-        return time / np.timedelta64(30, 'D'), "months"
+        #default to days
+        return time / np.timedelta64(1, 'D'), "days"
 
 
 
