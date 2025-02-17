@@ -7,7 +7,7 @@ from .depth_utils import get_zlevs, get_depth_index
 from .data_manipulation_utils import *
 
 
-def plot_surface(dataset, variable, time_idx, ax=None, title=None, cmap=None, vmin=None, vmax=None, cbar=True, time_unit='months', shading='gouraud'):
+def plot_surface(dataset, variable, time_idx, ax=None, title=None, cmap=None, vmin=None, vmax=None, cbar=True, time_unit='days', shading='gouraud'):
     """
     Plots a surface map of a given variable from an xarray Dataset.
 
@@ -48,7 +48,7 @@ def plot_surface(dataset, variable, time_idx, ax=None, title=None, cmap=None, vm
     return ax, im
 
 
-def plot_surfaces(dataset, variable, time_idx=range(5), titles=None, cmap=None, vmin=None, vmax=None, suptitle=None, time_unit='months'):
+def plot_surfaces(dataset, variable, time_idx=range(5), titles=None, cmap=None, vmin=None, vmax=None, suptitle=None, time_unit='days'):
     """
     Plots a series of surface maps for a given variable over multiple time indices.
 
@@ -99,7 +99,7 @@ def plot_surfaces(dataset, variable, time_idx=range(5), titles=None, cmap=None, 
     return fig, axs
 
 
-def plot_depth(dataset, variable, time, eta=None, xi=None, max_depth=500, z_levs=None, ax=None, title=None, cmap=None, vmin=None, vmax=None, cbar=True, shading='gouraud', time_unit='months'):
+def plot_depth(dataset, variable, time, eta=None, xi=None, max_depth=500, z_levs=None, ax=None, title=None, cmap=None, vmin=None, vmax=None, cbar=True, shading='gouraud', time_unit='days'):
     """
     Plots a depth profile map of a given variable from an xarray Dataset at a specific time and location (eta or xi)
 
@@ -158,7 +158,7 @@ def plot_depth(dataset, variable, time, eta=None, xi=None, max_depth=500, z_levs
     return im
 
 
-def plot_depths(dataset, variable, time_indices=range(5), eta=None, xi=None, max_depth=500, titles=None, cmap=None, vmin=None, vmax=None, suptitle=None, cbar=True, time_unit='months'):
+def plot_depths(dataset, variable, time_indices=range(5), eta=None, xi=None, max_depth=500, titles=None, cmap=None, vmin=None, vmax=None, suptitle=None, cbar=True, time_unit='days'):
     """
     Plots a series of depth profile maps for a given variable over multiple time indices at a fixed location (eta, xi).
 
@@ -208,7 +208,7 @@ def plot_depths(dataset, variable, time_indices=range(5), eta=None, xi=None, max
     return fig, axs
 
 
-def compare_datasets(datasets, variable, time_idx=0, labels=None, cmap=None, vmin=None, vmax=None, auto_minmax=True, time_unit='months'):
+def compare_datasets(datasets, variable, time_idx=0, labels=None, cmap=None, vmin=None, vmax=None, auto_minmax=True, time_unit='days'):
     """
     Compares surface plots of a given variable from multiple xarray Datasets at the same time index.
 
@@ -248,40 +248,10 @@ def compare_datasets(datasets, variable, time_idx=0, labels=None, cmap=None, vmi
         set_plot_labels(ax, dataset[variable], title=f"{labels[i]}")
 
     time_val = datasets[0].time[time_idx].values
-    time_val = convert_time(time_val, unit=time_unit)
+    time_val, time_unit = convert_time(time_val, unit=time_unit)
 
     fig.suptitle(f"Comparison of {variable} at {time_val:.1f} {time_unit}")
     add_colorbar_to_subplots(fig, axs, ims, variable)
-    return fig, axs
-
-
-def create_subplots(num_plots, max_columns=2, figsize=None):
-    """
-    Creates a grid of subplots dynamically adjusting rows and columns based on the number of plots.
-
-    Parameters:
-        num_plots (int): The number of subplots to create.
-        max_columns (int, optional): Maximum number of columns in the subplot grid. Defaults to 2.
-        figsize (tuple, optional): Figure size. Defaults to None (auto-determined).
-
-    Returns:
-        tuple: Figure and axes objects.
-    """
-    num_rows, num_cols = get_optimal_subplot_dims(num_plots, max_columns)
-
-    if figsize is None:
-        figsize = (num_cols * 6, num_rows * 5)  # Adjust figure size based on the number of subplots
-
-    fig, axs = plt.subplots(num_rows, num_cols, figsize=figsize)
-
-    if num_plots == 1: # Handle single plot case to ensure axs is still iterable
-        axs = np.array([axs]) # make it a 1D array
-
-    # Hide any unused subplots if num_plots is not a perfect grid fill
-    if num_plots < num_rows * num_cols:
-        for i in range(num_plots, num_rows * num_cols):
-            fig.delaxes(axs.flatten()[i]) # remove extra subplots
-
     return fig, axs
 
 
@@ -316,7 +286,7 @@ def add_colorbar_to_subplots(fig, axs, ims, variable, orientation='vertical'):
 
 
 
-def plot_surface_vars(dataset, vars, time, max_columns=2, title="Surface Plots", figsize=None, auto_minmax=False):
+def plot_surface_vars(dataset, vars, time, max_columns=2, title="Surface Plots", figsize=None, time_unit="days"):
     """
     Plots surface maps for multiple variables from a single dataset at a given time.
 
@@ -335,11 +305,14 @@ def plot_surface_vars(dataset, vars, time, max_columns=2, title="Surface Plots",
     fig, ax = create_subplots(len(vars), max_columns=max_columns, figsize=figsize)
 
     for i, var in enumerate(vars):
-        plot_surface(dataset, var, time, ax=ax.flat[i], auto_minmax=auto_minmax) # Pass auto_minmax
+        plot_surface(dataset, var, time, ax=ax.flat[i], time_unit=time_unit)
         ax[i].label_outer()
 
     plt.suptitle(title, fontsize=15)
     return fig, ax
+
+
+
 
 
 def plot_depth_vars(dataset, vars, time, eta=50, xi=50, max_depth=500, shading='gouraud', max_columns=2, title="Depth Plots", auto_minmax=False):
