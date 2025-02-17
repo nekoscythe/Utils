@@ -21,7 +21,7 @@ def convert_time(time, unit="days"):
         xarray.DataArray: The converted time values.
     """
     # convert time to np.timedelta64 in seconds
-    time = np.timedelta64(int(time), 's')
+    time = np.asarray(time, dtype='timedelta64[s]')
     if unit == "months":
         return time / np.timedelta64(30, 'D'), unit
     elif unit == "minutes":
