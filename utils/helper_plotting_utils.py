@@ -7,7 +7,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 # Plotting Helpers
 ##################
 
-def convert_time(time, unit="months"):
+def convert_time(time, unit="days"):
     """
     Converts time values to a specified unit.
 
@@ -15,7 +15,7 @@ def convert_time(time, unit="months"):
 
     Parameters:
         time (xarray.DataArray): The time values to convert (in seconds).s
-        unit (str, optional): The unit to convert to. Defaults to "months".
+        unit (str, optional): The unit to convert to. Defaults to "days".
 
     Returns:
         xarray.DataArray: The converted time values.
@@ -98,7 +98,7 @@ def create_subplots(n, max_columns=4, figsize=None):
     if figsize is not None:
         fig, axes = plt.subplots(rows, cols, figsize=figsize)
     else:
-        fig, axes = plt.subplots(rows, cols, figsize=(cols*4, rows*4)) # 4x4 aspect ratio + 1 for colorbar
+        fig, axes = plt.subplots(rows, cols, figsize=(cols*4, rows*4)) # 4x4 aspect ratio
 
     # Flatten the axes if necessary
     if rows * cols > 1:
