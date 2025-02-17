@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
+from .helper_plotting_utils import convert_time
 
-def plot_over_time(dataset, data, data_name, title, ax=None):
+def plot_over_time(dataset, data, data_name, title, ax=None, time_unit="months"):
     """
     Plots a time series of the given data.
 
@@ -11,18 +12,19 @@ def plot_over_time(dataset, data, data_name, title, ax=None):
         title (str): Title of the plot.
         ax (matplotlib.axes.Axes, optional): The axes object to plot on. If None, a new figure and axes are created. Defaults to None.
     """
-    time = dataset.time.values / (30 * 24 * 60 * 60)  # convert time from seconds to months
+    time = dataset.time.values
+    time, time_unit = convert_time(time, time_unit)
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
     ax.plot(time, data)
     ax.set_title(title)
-    ax.set_xlabel('Time (months)')
+    ax.set_xlabel(f'Time ({time_unit})')
     ax.set_ylabel(data_name)
     plt.grid(True)
 
 
-def plot_weighted_average(dataset, variable, title=None, ax=None):
+def plot_weighted_average(dataset, variable, title=None, ax=None, time_unit='months'):
     """
     Plots the time series of the volume-weighted average of a variable.
 
@@ -38,10 +40,10 @@ def plot_weighted_average(dataset, variable, title=None, ax=None):
     var_data = dataset[variable]
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
-    plot_over_time(dataset, weighted_avg, "{} ({})".format(var_data.long_name, var_data.units), title, ax)
+    plot_over_time(dataset, weighted_avg, "{} ({})".format(var_data.long_name, var_data.units), title, ax, time_unit)
     ax.set_ylabel("{} ({})".format(var_data.long_name, var_data.units))
 
-def plot_surface_average(dataset, variable, title=None, ax=None):
+def plot_surface_average(dataset, variable, title=None, ax=None, time_unit='months'):
     """
     Plots the time series of the surface-weighted average of a variable.
 
@@ -57,11 +59,11 @@ def plot_surface_average(dataset, variable, title=None, ax=None):
     var_data = dataset[variable]
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
-    plot_over_time(dataset, avg, "{} ({})".format(var_data.long_name, var_data.units), title, ax)
+    plot_over_time(dataset, avg, "{} ({})".format(var_data.long_name, var_data.units), title, ax, time_unit)
     ax.set_ylabel("{} ({})".format(var_data.long_name, var_data.units))
 
 
-def plot_total_KE(dataset, title="", ax=None):
+def plot_total_KE(dataset, title="", ax=None, time_unit='months'):
     """
     Plots the time series of the total kinetic energy (KE) of the flow.
 
@@ -72,12 +74,12 @@ def plot_total_KE(dataset, title="", ax=None):
         title (str, optional): Title of the plot. Defaults to "".
         ax (matplotlib.axes.Axes, optional): The axes object to plot on. If None, a new figure and axes are created. Defaults to None.
     """
-    total_KE = compute_total_KE(dataset)
+    total_KE = compute_total(dataset, 'KE')
 
-    plot_over_time(dataset, total_KE, 'Kinetic Energy (J)', title, ax)
+    plot_over_time(dataset, total_KE, 'Kinetic Energy (m^2/s^2)', title, ax, time_unit)
 
 
-def plot_average_KE(dataset, title="", ax=None):
+def plot_average_KE(dataset, title="", ax=None, time_unit='months'):
     """
     Plots the time series of the average kinetic energy (KE) of the flow.
 
@@ -88,9 +90,9 @@ def plot_average_KE(dataset, title="", ax=None):
         title (str, optional): Title of the plot. Defaults to "".
         ax (matplotlib.axes.Axes, optional): The axes object to plot on. If None, a new figure and axes are created. Defaults to None.
     """
+    
+    avg_KE = compute_weighted_average(dataset, 'KE')
 
-    avg_KE = compute_average_KE(dataset)
+    plot_over_time(dataset, avg_KE, 'Average Kinetic Energy (m^2/s^2)', title, ax, time_unit)
 
-    plot_over_time(dataset, avg_KE, 'Average Kinetic Energy (m^2/s^2)', title, ax)
-
-from .computation_utils import compute_weighted_average, compute_surface_average, compute_total_KE, compute_average_KE # Import here to avoid circular dependency
+from .computation_utils import compute_weighted_average, compute_surface_average, compute_total # Import here to avoid circular dependency
