@@ -130,7 +130,7 @@ def add_dV(dataset):
     return dV_da
 
 
-def preprocess(dataset, bio=False, preprocess_done=False, output_path=None):
+def preprocess(dataset, preprocess_done=False, output_path=None):
     """
     Applies a series of preprocessing steps to the input dataset.
     Does not modify the input dataset in-place.
@@ -147,7 +147,6 @@ def preprocess(dataset, bio=False, preprocess_done=False, output_path=None):
 
     Parameters:
         dataset (xarray.Dataset): The input dataset.
-        bio (bool, optional): If True, apply non-negativity to biological variables. Defaults to False.
         output_path (str, optional): Path to save the *additional* preprocessed variables to a new NetCDF file.
                                      If None, the preprocessed variables are not saved to a file. Defaults to None.
 
@@ -168,8 +167,7 @@ def preprocess(dataset, bio=False, preprocess_done=False, output_path=None):
         processed_dataset = processed_dataset.assign({'RV': rv_da, 'KE': ke_da, 'dV': dv_da}) # assign derived variables to processed_dataset
         add_km_grid(processed_dataset) # add km_grid to processed_dataset
 
-    if bio:
-        processed_dataset = non_negative_bio(processed_dataset)
+    processed_dataset = non_negative_bio(processed_dataset)
     processed_dataset = reset_time(processed_dataset) # Use imported reset_time from general_utils
 
     if output_path and not preprocess_done: # Save *additional* variables to NetCDF if output_path is provided
@@ -202,7 +200,7 @@ def fast_merge(dataset, additional_vars_ds):
     return dataset
     
 
-def load_and_preprocess(file_path, bio=False):
+def load_and_preprocess(file_path):
     """
     Loads a NetCDF dataset and applies preprocessing.
     Checks for a preprocessed file and loads from it if available to avoid redundant computations.
@@ -221,7 +219,7 @@ def load_and_preprocess(file_path, bio=False):
         original_dataset = xroms.open_netcdf(file_path) # load original dataset
         print("Original dataset loaded")
         #preprocces to match the additional variables
-        original_dataset = preprocess(original_dataset, bio=bio, preprocess_done=True)
+        original_dataset = preprocess(original_dataset, preprocess_done=True)
         print("Preprocessing done. Loading additional variables")
         additional_vars_ds = xr.open_dataset(preprocessed_file_path) # Load preprocessed variables
         print("Additional variables loaded. Merging datasets...")
@@ -231,7 +229,7 @@ def load_and_preprocess(file_path, bio=False):
         print(f"Preprocessing dataset from: {file_path}")
         dataset = xroms.open_netcdf(file_path) # Load original dataset
         print("Original dataset loaded. Preprocessing...")
-        preprocessed_dataset = preprocess(dataset, bio=bio, output_path=preprocessed_file_path) # Preprocess and save additional vars
+        preprocessed_dataset = preprocess(datasetb, output_path=preprocessed_file_path) # Preprocess and save additional vars
         print("Preprocessing done.")
     return preprocessed_dataset
 

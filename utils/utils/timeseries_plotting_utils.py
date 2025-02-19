@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 from .helper_plotting_utils import convert_time
 
-def plot_over_time(dataset, data, data_name, title, ax=None, time_unit="months"):
+def plot_over_time(dataset, data, data_name, title, ax=None, time_unit="days", label=None):
     """
     Plots a time series of the given data.
 
@@ -17,14 +17,15 @@ def plot_over_time(dataset, data, data_name, title, ax=None, time_unit="months")
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(time, data)
+    ax.plot(time, data, label=label)
     ax.set_title(title)
     ax.set_xlabel(f'Time ({time_unit})')
     ax.set_ylabel(data_name)
-    plt.grid(True)
+    ax.grid(True)
+    ax.legend()
 
 
-def plot_weighted_average(dataset, variable, title=None, ax=None, time_unit='months'):
+def plot_weighted_average(dataset, variable, title=None, ax=None, time_unit='days', label=None):
     """
     Plots the time series of the volume-weighted average of a variable.
 
@@ -40,10 +41,10 @@ def plot_weighted_average(dataset, variable, title=None, ax=None, time_unit='mon
     var_data = dataset[variable]
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
-    plot_over_time(dataset, weighted_avg, "{} ({})".format(var_data.long_name, var_data.units), title, ax, time_unit)
+    plot_over_time(dataset, weighted_avg, "{} ({})".format(var_data.long_name, var_data.units), title, ax, time_unit,label=label)
     ax.set_ylabel("{} ({})".format(var_data.long_name, var_data.units))
 
-def plot_surface_average(dataset, variable, title=None, ax=None, time_unit='months'):
+def plot_surface_average(dataset, variable, title=None, ax=None, time_unit='days', label=None):
     """
     Plots the time series of the surface-weighted average of a variable.
 
@@ -59,11 +60,11 @@ def plot_surface_average(dataset, variable, title=None, ax=None, time_unit='mont
     var_data = dataset[variable]
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
-    plot_over_time(dataset, avg, "{} ({})".format(var_data.long_name, var_data.units), title, ax, time_unit)
+    plot_over_time(dataset, avg, "{} ({})".format(var_data.long_name, var_data.units), title, ax, time_unit,label=label)
     ax.set_ylabel("{} ({})".format(var_data.long_name, var_data.units))
 
 
-def plot_total_KE(dataset, title="", ax=None, time_unit='months'):
+def plot_total_KE(dataset, title="", ax=None, time_unit='days', label=None):
     """
     Plots the time series of the total kinetic energy (KE) of the flow.
 
@@ -76,10 +77,10 @@ def plot_total_KE(dataset, title="", ax=None, time_unit='months'):
     """
     total_KE = compute_total(dataset, 'KE')
 
-    plot_over_time(dataset, total_KE, 'Kinetic Energy (m^2/s^2)', title, ax, time_unit)
+    plot_over_time(dataset, total_KE, 'Kinetic Energy (m^2/s^2)', title, ax, time_unit, label)
 
 
-def plot_average_KE(dataset, title="", ax=None, time_unit='months'):
+def plot_average_KE(dataset, title="", ax=None, time_unit='days', label=None):
     """
     Plots the time series of the average kinetic energy (KE) of the flow.
 
@@ -93,6 +94,6 @@ def plot_average_KE(dataset, title="", ax=None, time_unit='months'):
     
     avg_KE = compute_weighted_average(dataset, 'KE')
 
-    plot_over_time(dataset, avg_KE, 'Average Kinetic Energy (m^2/s^2)', title, ax, time_unit)
+    plot_over_time(dataset, avg_KE, 'Average Kinetic Energy (m^2/s^2)', title, ax, time_unit, label)
 
 from .computation_utils import compute_weighted_average, compute_surface_average, compute_total # Import here to avoid circular dependency

@@ -131,6 +131,12 @@ def get_colormap_and_limits(data, vmin=None, vmax=None):
     cmap = "turbo" if pos_data else "seismic"
     vmax = np.nanmax(np.abs(data)) if vmax is None else vmax
     vmin = np.nanmin(data) if vmin is None else vmin
+    
+    #if vmin and vmax are the same, set them to +- 10% of the value
+    if vmin == vmax:
+        vmin = vmin * 0.9
+        vmax = vmax * 1.1
+    
     return cmap, vmin, vmax
 
 
@@ -164,6 +170,36 @@ def add_colorbar(fig, im, var_data, ax=None):
         cbar = fig.colorbar(im, cax=cax)
     cbar.set_label(f"{var_data.attrs['units']}")
     return cbar
+
+
+def add_colorbar_to_subplots(fig, axs, ims, variable, orientation='vertical'):
+    """
+    Adds a single colorbar to a series of subplots.
+
+    Parameters:
+        fig (matplotlib.figure.Figure): The figure object containing the subplots.
+        axs (numpy.ndarray): Array of axes objects.
+        ims (list): List of image objects from the subplots.
+        variable (str): The name of the variable for the colorbar label.
+        orientation (str, optional): Orientation of the colorbar ('vertical' or 'horizontal'). Defaults to 'vertical'.
+    """
+    if not ims:  # Check if ims is empty
+        return
+
+    axs = np.ravel(axs)  # Flatten in case axs is a 2D array
+
+    # Get subplot bounding box
+    bbox = np.array([ax.get_position().bounds for ax in axs])
+    left, bottom = np.min(bbox[:, 0]), np.min(bbox[:, 1])
+    right, top = np.max(bbox[:, 0] + bbox[:, 2]), np.max(bbox[:, 1] + bbox[:, 3])
+
+    if orientation == 'vertical':
+        cbar_ax = fig.add_axes([right + 0.01, bottom, 0.02, top - bottom])  # [left, bottom, width, height]
+    elif orientation == 'horizontal':
+        cbar_ax = fig.add_axes([left, bottom - 0.05, right - left, 0.02])  # [left, bottom, width, height]
+        
+
+    fig.colorbar(ims[-1], cax=cbar_ax, label=variable, orientation=orientation)
 
 
 def set_plot_labels(ax, var_data, xlabel=None, ylabel=None, title=None, time_value=None, time_unit='months'):

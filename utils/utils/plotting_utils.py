@@ -33,8 +33,7 @@ def plot_surface(dataset, variable, time_idx, ax=None, title=None, cmap=None, vm
     var_data = dataset[variable][time_idx, -1] if len(dataset[variable].shape) == 4 else dataset[variable][time_idx] # 4D vs 3D data
     data = interpolate_to_rho(var_data)   #Interpolate data to rho grid
     cmap, vmin, vmax = get_colormap_and_limits(data, vmin=vmin, vmax=vmax)
-    if vmin is None or vmax is None:
-        cmap, vmin, vmax = get_colormap_and_limits(data, vmin=vmin, vmax=vmax)
+    
 
     X, Y = dataset.lon_km.values, dataset.lat_km.values
     im = ax.pcolormesh(X, Y, data, cmap=cmap, vmin=vmin, vmax=vmax, shading=shading)
@@ -208,7 +207,7 @@ def plot_depths(dataset, variable, time_indices=range(5), eta=None, xi=None, max
     return fig, axs
 
 
-def compare_datasets(datasets, variable, time_idx=0, labels=None, cmap=None, vmin=None, vmax=None, time_unit='days', max_columns=2):
+def compare_datasets(datasets, variable, time_idx=0, eta=None, xi=None, labels=None, cmap=None, vmin=None, vmax=None, time_unit='days', max_columns=2):
     """
     Compares surface plots of a given variable from multiple xarray Datasets at the same time index.
 
@@ -232,15 +231,33 @@ def compare_datasets(datasets, variable, time_idx=0, labels=None, cmap=None, vmi
     if labels is None:
         labels = [f"Dataset {i+1}" for i in range(num_datasets)]
 
+    #check if we are plotting surface or depth
+    plotting_depth=False
+    if eta is not None or xi is not None:
+        plotting_depth=True
+        # Either eta or xi must be provided, but not both
+        if eta is not None and xi is not None:
+            raise ValueError("Only one of eta or xi can be provided")
+        
+        eta = slice(None) if xi is not None else eta
+        xi = slice(None) if eta is not None else xi
+        
+    if plotting_depth:
+        combined_data = np.concatenate([ds[variable][time_idx, :, eta, xi].values.flatten() for ds in datasets])
+        eta = None if xi is not None else eta
+        xi = None if eta is not None else xi #reset to None for plotting
+    else:
+        combined_data = np.concatenate([ds[variable][time_idx, -1].values.flatten() for ds in datasets]) # Surface data
     
-    combined_data = np.concatenate([ds[variable][time_idx].values.flatten() for ds in datasets])
     cmap, vmin, vmax = get_colormap_and_limits(combined_data, vmin=vmin, vmax=vmax)
-
 
     ims = []
     for i, dataset in enumerate(datasets):
         ax = axs[i]
-        ax_im = plot_surface(dataset, variable, time_idx, ax=ax, title=f"{labels[i]}", vmin=vmin, vmax=vmax, cmap=cmap, cbar=False)[1]  # Get the image object
+        if plotting_depth:
+            ax_im = plot_depth(dataset, variable, time_idx, eta=eta, xi=xi, ax=ax, title=f"{labels[i]}", vmin=vmin, vmax=vmax, cmap=cmap, cbar=False)[1]
+        else:
+            ax_im = plot_surface(dataset, variable, time_idx, ax=ax, title=f"{labels[i]}", vmin=vmin, vmax=vmax, cmap=cmap, cbar=False)[1]  # Get the image object
         ims.append(ax_im)
         ax.label_outer()
         
@@ -249,40 +266,12 @@ def compare_datasets(datasets, variable, time_idx=0, labels=None, cmap=None, vmi
     time_val, time_unit = convert_time(time_val, unit=time_unit)
 
     fig.suptitle(f"Comparison of {variable} at {time_val:.1f} {time_unit}")
-    plt.tight_layout()
     
     add_colorbar_to_subplots(fig, axs, ims, variable)
     return fig, axs
 
 
-def add_colorbar_to_subplots(fig, axs, ims, variable, orientation='vertical'):
-    """
-    Adds a single colorbar to a series of subplots.
 
-    Parameters:
-        fig (matplotlib.figure.Figure): The figure object containing the subplots.
-        axs (numpy.ndarray): Array of axes objects.
-        ims (list): List of image objects from the subplots.
-        variable (str): The name of the variable for the colorbar label.
-        orientation (str, optional): Orientation of the colorbar ('vertical' or 'horizontal'). Defaults to 'vertical'.
-    """
-    if not ims:  # Check if ims is empty
-        return
-
-    axs = np.ravel(axs)  # Flatten in case axs is a 2D array
-
-    # Get subplot bounding box
-    bbox = np.array([ax.get_position().bounds for ax in axs])
-    left, bottom = np.min(bbox[:, 0]), np.min(bbox[:, 1])
-    right, top = np.max(bbox[:, 0] + bbox[:, 2]), np.max(bbox[:, 1] + bbox[:, 3])
-
-    if orientation == 'vertical':
-        cbar_ax = fig.add_axes([right + 0.01, bottom, 0.02, top - bottom])  # [left, bottom, width, height]
-    elif orientation == 'horizontal':
-        cbar_ax = fig.add_axes([left, bottom - 0.05, right - left, 0.02])  # [left, bottom, width, height]
-        
-
-    fig.colorbar(ims[-1], cax=cbar_ax, label=variable, orientation=orientation)
 
 
 
