@@ -179,6 +179,29 @@ def preprocess(dataset, bio=False, preprocess_done=False, output_path=None):
 
     return processed_dataset
 
+def fast_merge(dataset, additional_vars_ds):
+    """
+    Merges the original dataset with the additional variables dataset.
+    Does not modify the input datasets in-place, returns a new dataset.
+
+    Parameters:
+        dataset (xarray.Dataset): The original dataset.
+        additional_vars_ds (xarray.Dataset): The dataset containing additional variables to merge.
+
+    Returns:
+        xarray.Dataset: The merged dataset.
+    """
+    data_vars = additional_vars_ds.data_vars # get data variables from additional_vars_ds
+    for data_var in data_vars: # loop over data variables
+        dataset[data_var] = additional_vars_ds[data_var] # add data variables to original dataset
+    #rechunking
+    one_var_size = dataset.salt.nbytes / 1e9 # in GB
+    # we want to have 1 GB chunks
+    chunks = int(dataset.time.size/one_var_size)
+    dataset = dataset.chunk({'time': chunks})
+    return dataset
+    
+
 def load_and_preprocess(file_path, bio=False):
     """
     Loads a NetCDF dataset and applies preprocessing.
@@ -196,15 +219,20 @@ def load_and_preprocess(file_path, bio=False):
     if os.path.exists(preprocessed_file_path): # Check if preprocessed file exists
         print(f"Loading preprocessed variables from: {preprocessed_file_path}")
         original_dataset = xroms.open_netcdf(file_path) # load original dataset
+        print("Original dataset loaded")
         #preprocces to match the additional variables
         original_dataset = preprocess(original_dataset, bio=bio, preprocess_done=True)
+        print("Preprocessing done. Loading additional variables")
         additional_vars_ds = xr.open_dataset(preprocessed_file_path) # Load preprocessed variables
-        preprocessed_dataset = xr.merge([original_dataset, additional_vars_ds], combine_attrs="override") # merge original and preprocessed
+        print("Additional variables loaded. Merging datasets...")
+        preprocessed_dataset = fast_merge(original_dataset, additional_vars_ds) # Merge datasets
+        print("Additional variables loaded")
     else: # Preprocessed file does not exist, perform preprocessing and save
         print(f"Preprocessing dataset from: {file_path}")
         dataset = xroms.open_netcdf(file_path) # Load original dataset
+        print("Original dataset loaded. Preprocessing...")
         preprocessed_dataset = preprocess(dataset, bio=bio, output_path=preprocessed_file_path) # Preprocess and save additional vars
-
+        print("Preprocessing done.")
     return preprocessed_dataset
 
 
