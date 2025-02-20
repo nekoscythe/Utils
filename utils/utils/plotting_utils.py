@@ -24,7 +24,7 @@ def plot_surface(dataset, variable, time_idx, ax=None, title=None, cmap=None, vm
         time_unit (str, optional): Unit for time display in the title ('hours', 'days', 'weeks', 'months', 'years'). Defaults to 'months'.
     Returns:
         tuple: A tuple containing the axes object and the image object.
-    """
+    """ 
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 6))
     else:
@@ -98,7 +98,7 @@ def plot_surfaces(dataset, variable, time_idx=range(5), titles=None, cmap=None, 
     return fig, axs
 
 
-def plot_depth(dataset, variable, time, eta=None, xi=None, max_depth=500, z_levs=None, ax=None, title=None, cmap=None, vmin=None, vmax=None, cbar=True, shading='gouraud', time_unit='days'):
+def plot_depth(dataset, variable, time, lat=None, lon=None, max_depth=500, z_levs=None, ax=None, title=None, cmap=None, vmin=None, vmax=None, cbar=True, shading='gouraud', time_unit='days'):
     """
     Plots a depth profile map of a given variable from an xarray Dataset at a specific time and location (eta or xi)
 
@@ -106,8 +106,8 @@ def plot_depth(dataset, variable, time, eta=None, xi=None, max_depth=500, z_levs
         dataset (xarray.Dataset): The dataset containing the variable to plot.
         variable (str): The name of the variable to plot.
         time (int): The time index to plot.
-        eta (int): The eta index (latitude-like) to plot.
-        xi (int): The xi index (longitude-like) to plot.
+        lat (int): The latitude (in km) to plot.
+        lon (int): The longitude (in km) to plot.
         max_depth (int, optional): Maximum depth to consider for plotting. Defaults to 500m.
         ax (matplotlib.axes.Axes, optional): The axes object to plot on. Defaults to None (creates a new figure and axes).
         title (str, optional): The title of the plot. Defaults to None (auto-generated).
@@ -125,13 +125,15 @@ def plot_depth(dataset, variable, time, eta=None, xi=None, max_depth=500, z_levs
     else:
         fig = ax.figure
         
-    # Either eta or xi must be provided, but not both
-    if eta is None and xi is None:
-        raise ValueError("Either eta or xi must be provided")
-    if eta is not None and xi is not None:
-        raise ValueError("Only one of eta or xi can be provided")
+    # Either lat_km or lon_km must be provided, but not both
+    if lat is None and lon is None:
+        raise ValueError("Either lat_km or lon_km must be provided")
+    if lat is not None and lon is not None:
+        raise ValueError("Only one of lat_km or lon_km can be provided")
     
-    data, X, xlabel = slice_data(dataset, variable, time, eta, xi)
+    print("slicing data")
+    data, X, xlabel = slice_data(dataset, variable, time, lat=lat, lon=lon)
+    print("slice_data", data.shape, X.shape)
     Y, z_var = get_zlevs(dataset) if z_levs is None else (z_levs, None)
     if z_var != "s_rho" and z_var != "s_w":
         z_idx = get_depth_index(Y, max_depth)
@@ -201,7 +203,7 @@ def plot_depths(dataset, variable, time_indices=range(5), eta=None, xi=None, max
         i += 1
 
     if suptitle is None:
-        suptitle = f"Depth profiles of {variable} at " + (f"eta={eta}" if xi is None else f"xi={xi}")
+        suptitle = f"Depth profiles of {variable} at " + (f"lat_km={eta}" if xi is None else f"lon_km={xi}")
     fig.suptitle(suptitle)
     add_colorbar_to_subplots(fig, axs, ims, variable, orientation='vertical')
     return fig, axs
@@ -255,9 +257,9 @@ def compare_datasets(datasets, variable, time_idx=0, eta=None, xi=None, labels=N
     for i, dataset in enumerate(datasets):
         ax = axs[i]
         if plotting_depth:
-            ax_im = plot_depth(dataset, variable, time_idx, eta=eta, xi=xi, ax=ax, title=f"{labels[i]}", vmin=vmin, vmax=vmax, cmap=cmap, cbar=False)[1]
+            ax_im = plot_depth(dataset, variable, time_idx, eta=eta, xi=xi, ax=ax, title=f"{labels[i]}", vmin=vmin, vmax=vmax, cmap=cmap, cbar=False)
         else:
-            ax_im = plot_surface(dataset, variable, time_idx, ax=ax, title=f"{labels[i]}", vmin=vmin, vmax=vmax, cmap=cmap, cbar=False)[1]  # Get the image object
+            ax_im = plot_surface(dataset, variable, time_idx, ax=ax, title=f"{labels[i]}", vmin=vmin, vmax=vmax, cmap=cmap, cbar=False)  # Get the image object
         ims.append(ax_im)
         ax.label_outer()
         

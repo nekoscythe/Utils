@@ -61,14 +61,14 @@ def get_zlevs(dataset):
             if dataset[z_var].ndim < 3:
                 print(f"Warning: z-level variable '{z_var}' has less than 3 dimensions, expected at least (time, z, ...).")
                 continue # Skip to the next z_var
-            return dataset[z_var][0, :, 0, 0].values, z_var
+            return dataset[z_var][0, :, 0, 0], z_var
 
     print("Warning: No z-level variable found in the dataset.")
     s_vars = ["s_rho", "s_w", "s_rho_u", "s_rho_v"]
     for s_var in s_vars:
         if s_var in dataset:
             print("Returning s-levels instead.")
-            return dataset[s_var].values, s_var
+            return dataset[s_var], s_var
     print("Warning: No s-level variable found in the dataset.")
     print("Returning None for z-levels.")
     return None, None
@@ -86,7 +86,8 @@ def get_depth_index(z_levs, depth):
         int: Index of the closest depth.
     """
     z = np.abs(z_levs)
-    if depth >= z.max():
-        print(f"Warning: Depth {depth} exceeds the maximum depth {z.max()}. Using bottom index.")
+    z_max = z[0]
+    if depth >= z_max:
+        print(f"Warning: Depth {depth} exceeds the maximum depth {z_max}. Using bottom index.")
         return 0 # Bottom index
     return (z <= depth).argmax() - 1

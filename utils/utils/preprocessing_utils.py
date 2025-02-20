@@ -123,11 +123,19 @@ def add_dV(dataset):
 
     dV = dataset.dA.values * dz  # volume of each cell
     
-    dataset_copy['dV'] = (('time', 's_rho', 'eta', 'xi'), dV, {'long_name' : 'volume of cells on RHO grid' , 'units': 'meter3'})
+    dataset_copy['dV'] = (('time', 's_rho', 'eta_rho', 'xi_rho'), dV, {'long_name' : 'volume of cells on RHO grid' , 'units': 'meter3'})
 
     dataset_copy['dV'] = dataset_copy.dV.chunk() # Chunk the DataArray for better performance
     dV_da = dataset_copy.dV
     return dV_da
+
+def fix_dV(dataset):
+    """
+    """
+    #if the dims of dV are eta and xi, rename them to eta_rho and xi_rho
+    if 'eta' in dataset.dV.dims and 'xi' in dataset.dV.dims:
+        dataset['dV'] = dataset['dV'].rename({'eta': 'eta_rho', 'xi': 'xi_rho'})
+    return dataset
 
 
 def preprocess(dataset, preprocess_done=False, output_path=None):
@@ -174,7 +182,7 @@ def preprocess(dataset, preprocess_done=False, output_path=None):
         additional_vars_ds = processed_dataset[['RV', 'KE', 'dV', 'lon_km', 'lat_km']] # create dataset with only additional vars
         additional_vars_ds.to_netcdf(output_path)
         print(f"Additional preprocessed variables saved to: {output_path}")
-
+        
     return processed_dataset
 
 def fast_merge(dataset, additional_vars_ds):
@@ -225,12 +233,14 @@ def load_and_preprocess(file_path):
         print("Additional variables loaded. Merging datasets...")
         preprocessed_dataset = fast_merge(original_dataset, additional_vars_ds) # Merge datasets
         print("Additional variables loaded")
+        preprocessed_dataset = fix_dV(preprocessed_dataset)
     else: # Preprocessed file does not exist, perform preprocessing and save
         print(f"Preprocessing dataset from: {file_path}")
         dataset = xroms.open_netcdf(file_path) # Load original dataset
         print("Original dataset loaded. Preprocessing...")
         preprocessed_dataset = preprocess(datasetb, output_path=preprocessed_file_path) # Preprocess and save additional vars
         print("Preprocessing done.")
+        preprocessed_dataset = fix_dV(preprocessed_dataset)
     return preprocessed_dataset
 
 

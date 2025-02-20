@@ -17,13 +17,8 @@ def compute_surface_average(ds, var, s_rho=-1):
     Returns:
         np.ndarray: The time series of the surface weighted average.
     """
-    data = ds[var][:, s_rho]
-    data = interpolate_to_rho(data)
-    dA = ds.dA.values
-    if dA.ndim == 2: # Assuming it's (lat, lon)
-        dA = dA.reshape((1, dA.shape[0], dA.shape[1]))
-    elif dA.ndim != 3:
-        raise ValueError("dA should have 2 or 3 dimensions (lat, lon) or (time, lat, lon)")
+    data = interpolate_to_rho(ds[var][:, s_rho])
+    dA = ds.dA
     weighted = data * dA
     return np.mean(weighted, axis=(1, 2)) / np.mean(dA)
 
@@ -38,17 +33,17 @@ def compute_total(dataset, variable, depth=-1):
         depth (int, optional): The depth in meters to calculate the total for.
                                Defaults to -1, which means total over all depths.
     """
-    data = dataset[variable]
-    data_vals = interpolate_to_rho(data)
-    dV = dataset.dV.values
+    data = interpolate_to_rho(dataset[variable])
+    dV = dataset.dV
 
     if depth != -1:
         z_levs , _ = get_zlevs(dataset)
         idx = get_depth_index(z_levs, depth)
-        data_vals = data_vals[:, :idx+1]
+        data = data[:, :idx+1]
         dV = dV[:, :idx+1]
 
-    total = np.sum(data_vals * dV, axis=(1, 2, 3))
+    # Compute the total by summing over depth, lat, and lon
+    total = (data * dV).sum(dim=("s_rho", "eta_rho", "xi_rho"))
 
     return total
 
@@ -69,11 +64,11 @@ def compute_weighted_average(dataset, variable, depth=-1):
         np.ndarray: The time series of the volume-weighted average of the variable.
     """
     total = compute_total(dataset, variable, depth)
-    dV = dataset.dV.values
+    dV = dataset.dV
 
     if depth != -1:
-        z_levs , _ = get_zlevs(dataset)
-        idx = get_depth_index(z_levs, depth)
+        z_levs , _ = utils.get_zlevs(dataset)
+        idx = utils.get_depth_index(z_levs, depth)
         dV = dV[:, :idx+1]
     
     total_volume = np.sum(dV, axis=(1, 2, 3))
